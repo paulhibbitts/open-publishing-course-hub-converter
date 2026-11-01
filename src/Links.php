@@ -62,4 +62,29 @@ class Links
         }
         return '/' . implode('/', $parts);
     }
+
+    // Docsify → Grav: guide/section/page.md?id=heading → /guide/section/page#heading, guide/README.md → /guide,
+    // home.md → / (or, in a single guide, the guide's address). Links to the original site go back to Grav's own
+    // form (/about). $single: the single guide's address name, or '' for a site with a Guides page.
+    public static function toGrav(string $markdown, string $single, string $siteUrl): string
+    {
+        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?\)/', function ($m) use ($single) {
+            $parts = explode('/', $m[1]);
+            $last = array_pop($parts);
+            if ($last !== 'README.md' && $last !== 'home.md') {
+                $parts[] = substr($last, 0, -3);
+            }
+            if ($last === 'home.md' && !$parts) {
+                $path = $single !== '' ? '/' . $single : '/';
+            } else {
+                $path = '/' . ($single !== '' ? $single . '/' : '') . implode('/', $parts);
+            }
+            $anchor = isset($m[2]) && $m[2] !== '' ? '#' . substr($m[2], 4) : '';
+            return '](' . $path . $anchor . ')';
+        }, $markdown);
+        if ($siteUrl !== '') {
+            $markdown = str_replace('](' . rtrim($siteUrl, '/') . '/', '](/', $markdown);
+        }
+        return $markdown;
+    }
 }

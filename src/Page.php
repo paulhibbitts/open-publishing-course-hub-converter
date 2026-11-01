@@ -12,6 +12,7 @@ class Page
     public array $meta = [];      // the same front matter, parsed
     public string $body = '';     // the Markdown below the front matter
     public array $images = [];    // image files in the page's own folder
+    public array $imageSources = []; // when read from Docsify: image name => where the file is now
     public array $children = [];  // sections of a guide, or pages of a section
     public array $menuPages = []; // a guide's unnumbered pages, such as Topics and Resources
 

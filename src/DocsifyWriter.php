@@ -12,6 +12,8 @@ class DocsifyWriter
     private string $out;
     private bool $single;
     private array $guideSlugs = [];
+    // a single guide's menu pages, for the site's navbar
+    private array $menuLinks = [];
     private string $siteUrl = '';
     // links that only work on the Grav site, and anything else worth checking (for conversion-notes.txt)
     public array $warnings = [];
@@ -25,6 +27,7 @@ class DocsifyWriter
         $this->single = $single;
         $this->siteUrl = $siteUrl;
         $this->warnings = [];
+        $this->menuLinks = [];
 
         $guides = $single ? array_slice($site->guides, 0, 1) : $site->guides;
         $this->guideSlugs = array_map(fn(Page $g) => $g->slug(), $guides);
@@ -37,7 +40,7 @@ class DocsifyWriter
         }
         // an empty navbar: on the Guides page it would only link to itself (each guide has its own); a Starter Kit
         // loads one, and an empty one takes no space (Docsify-This only loads it with loadNavbar)
-        $this->writeFile('_navbar.md', '');
+        $this->writeFile('_navbar.md', implode("\n", $this->menuLinks));
     }
 
     // Writes one guide and returns its card for the Guides page
@@ -83,10 +86,32 @@ class DocsifyWriter
             }
         }
 
+        // guide menu pages (Topics, Resources …): outside the reading order, so they hide the sidebar, link back
+        // to the guide home (even in a single guide, since the site's name is hidden with the sidebar), and are
+        // linked from the guide's navbar, in Grav's menu_order
+        $menuPages = $guide->menuPages;
+        usort($menuPages, fn(Page $a, Page $b) => ((int)($a->meta['menu_order'] ?? 99)) <=> ((int)($b->meta['menu_order'] ?? 99)));
+        $menuLinks = [];
+        foreach ($menuPages as $page) {
+            $path = $top . $page->slug() . '.md';
+            $body = trim($this->convert($page->body, '/' . $g . '/' . $page->slug(), $path));
+            // the page's own text often starts with its title; if not, it's added
+            $head = ['[← ' . $title . '](' . $homeFile . ')'];
+            if (!preg_match('/^# /', $body)) {
+                $head = array_merge($head, ['', '# ' . $page->title()]);
+            }
+            $lines = array_merge([Helpers::gravNote($page), ''], Helpers::generated($head), ['', $body, ''],
+                Helpers::generated(['<!-- Hides the sidebar on this page -->', self::HIDE_SIDEBAR]));
+            $this->writeFile($path, implode("\n", $lines));
+            $menuLinks[] = '- [' . $page->title() . '](' . $path . ')';
+        }
+
         $this->writeGuideHome($guide, $homeFile, $top, $label, $sections);
         $this->writeSidebar($guide, $top, $sections);
         if (!$this->single) {
-            $this->writeFile($g . '/_navbar.md', '- [All Guides](home.md)');
+            $this->writeFile($g . '/_navbar.md', implode("\n", array_merge(['- [All Guides](home.md)'], $menuLinks)));
+        } elseif ($menuLinks) {
+            $this->menuLinks = $menuLinks;
         }
         return $this->guideCard($guide);
     }
@@ -114,7 +139,8 @@ class DocsifyWriter
         }
         $first = $sections ? $top . $sections[0][0]->slug() . '/README.md' : $homeFile;
 
-        $lines = [Helpers::gravNote($guide), ''];
+        // (a single guide's home is the site's home page, so it also keeps the original site's address)
+        $lines = [Helpers::gravNote($guide, $this->single && $this->siteUrl !== '' ? ['site' => $this->siteUrl] : []), ''];
         $lines = array_merge($lines, Helpers::generated(['# ' . $guide->title(), '', (string)($guide->meta['subtitle'] ?? '')]), ['']);
         $lines[] = trim($this->convert($above, '/' . $g, $homeFile));
         $lines[] = '';
@@ -190,7 +216,8 @@ class DocsifyWriter
     {
         $page ??= new Page('guides', '00.guides', 'reader-list.md');
         [$above, $below] = $this->splitAtSeparator($page->body);
-        $lines = [Helpers::gravNote($page), ''];
+        // the original site's address is kept with the home page, so links to it can go back to Grav's own form
+        $lines = [Helpers::gravNote($page, $this->siteUrl !== '' ? ['site' => $this->siteUrl] : []), ''];
         $lines = array_merge($lines, Helpers::generated(['# ' . ($page->meta['title'] ?? 'Guides'), '', (string)($page->meta['subtitle'] ?? '')]), ['']);
         $lines[] = trim($this->convert($above, '/' . $page->slug(), 'home.md'));
         $lines[] = '';
@@ -217,6 +244,9 @@ class DocsifyWriter
     private function convert(string $markdown, string $gravPath, string $where): string
     {
         $markdown = Links::toDocsify(Callouts::toDocsify($markdown), $this->guideSlugs, $this->single);
+        foreach (Callouts::unknownShortcodes($markdown) as $name) {
+            $this->warnings[] = $where . ': the [' . $name . '] shortcode only works in Grav (left as it is)';
+        }
         return Links::gravOnly($markdown, $gravPath, $this->siteUrl, $where, $this->warnings);
     }
 

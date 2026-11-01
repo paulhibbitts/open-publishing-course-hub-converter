@@ -36,12 +36,13 @@ class Helpers
 
     // The hidden note that lets a Docsify page go back to Grav unchanged. Docsify doesn't show HTML comments.
     // First line: where the page came from (and its images); then its front matter exactly as written.
-    public static function gravNote(Page $page): string
+    public static function gravNote(Page $page, array $extra = []): string
     {
         $where = ['file' => ltrim($page->folder . '/' . $page->file, '/')];
         if ($page->images) {
             $where['images'] = $page->images;
         }
+        $where += $extra;
         $yaml = rtrim(str_replace('-->', '--&gt;', $page->yaml));
         return '<!-- grav: ' . json_encode($where, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n" . $yaml . "\n-->";
     }
@@ -51,5 +52,15 @@ class Helpers
     public static function generated(array $lines): array
     {
         return array_merge(['<!-- grav:gen -->'], $lines, ['<!-- /grav:gen -->']);
+    }
+
+    // Reads a hidden note back: [what the first line holds, the front matter, the rest of the page]
+    public static function readGravNote(string $text): ?array
+    {
+        if (!preg_match('/^<!-- grav: (\{.*?\})\n(.*?)\n?-->\n?(.*)$/s', ltrim($text), $m)) {
+            return null;
+        }
+        $where = json_decode($m[1], true);
+        return $where === null ? null : [$where, str_replace('--&gt;', '-->', $m[2]), $m[3]];
     }
 }

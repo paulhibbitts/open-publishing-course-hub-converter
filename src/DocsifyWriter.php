@@ -11,16 +11,25 @@ class DocsifyWriter
     private string $pagesDir;
     private string $out;
     private bool $single;
+    private array $guideSlugs = [];
+    private string $siteUrl = '';
+    // links that only work on the Grav site, and anything else worth checking (for conversion-notes.txt)
+    public array $warnings = [];
 
     // $single: a single-guide site (the guide home is home.md, sections are top-level folders, no Guides page)
-    public function write(Site $site, string $pagesDir, string $out, bool $single = false): void
+    // $siteUrl: the original Grav site's address, for links to its other pages (optional)
+    public function write(Site $site, string $pagesDir, string $out, bool $single = false, string $siteUrl = ''): void
     {
         $this->pagesDir = $pagesDir;
         $this->out = $out;
         $this->single = $single;
+        $this->siteUrl = $siteUrl;
+        $this->warnings = [];
 
+        $guides = $single ? array_slice($site->guides, 0, 1) : $site->guides;
+        $this->guideSlugs = array_map(fn(Page $g) => $g->slug(), $guides);
         $cards = [];
-        foreach ($single ? array_slice($site->guides, 0, 1) : $site->guides as $guide) {
+        foreach ($guides as $guide) {
             $cards = array_merge($cards, $this->writeGuide($guide));
         }
         if (!$single) {
@@ -59,16 +68,18 @@ class DocsifyWriter
             }
 
             $head = array_merge($back, ['# ' . $section->title(), '', '<small>' . $label . ' ' . $number . '</small>']);
-            $body = $this->convert($section->body, $g);
+            $sectionPath = $top . $section->slug() . '/README.md';
+            $body = $this->convert($section->body, '/' . $g . '/' . $section->slug(), $sectionPath);
             if (!empty($section->meta['learning_objectives'])) {
                 $head = array_merge($head, ['', Callouts::quote('TIP', 'Learning Objectives', (string)$section->meta['learning_objectives'])]);
                 $body = Callouts::tipsToNotes($body);
             }
-            $this->writePage($top . $section->slug() . '/README.md', $section, $head, $body);
+            $this->writePage($sectionPath, $section, $head, $body);
 
             foreach ($section->children as $page) {
                 $head = array_merge($back, ['# ' . $page->title()]);
-                $this->writePage($top . $section->slug() . '/' . $page->slug() . '.md', $page, $head, $this->convert($page->body, $g));
+                $pagePath = $top . $section->slug() . '/' . $page->slug() . '.md';
+                $this->writePage($pagePath, $page, $head, $this->convert($page->body, '/' . $g . '/' . $section->slug() . '/' . $page->slug(), $pagePath));
             }
         }
 
@@ -105,7 +116,7 @@ class DocsifyWriter
 
         $lines = [Helpers::gravNote($guide), ''];
         $lines = array_merge($lines, Helpers::generated(['# ' . $guide->title(), '', (string)($guide->meta['subtitle'] ?? '')]), ['']);
-        $lines[] = trim($this->convert($above, $g));
+        $lines[] = trim($this->convert($above, '/' . $g, $homeFile));
         $lines[] = '';
         $lines = array_merge($lines, Helpers::generated(array_merge(
             ['[Start Reading](' . $first . ' ":class=button :class=primary")', '', '<div class="card-list-sections">', ''],
@@ -115,13 +126,13 @@ class DocsifyWriter
         if (trim($below) !== '') {
             $lines[] = '<!-- grav:=== -->';
             $lines[] = '';
-            $lines[] = trim($this->convert($below, $g));
+            $lines[] = trim($this->convert($below, '/' . $g, $homeFile));
             $lines[] = '';
         }
         $foot = [];
         if (!empty($guide->meta['side_box'])) {
             // the Side Box invites readers to act, so a TIP
-            $foot[] = "> [!TIP]\n" . implode("\n", array_map(fn($l) => $l === '' ? '>' : '> ' . $l, explode("\n", trim($this->convert((string)$guide->meta['side_box'], $g)))));
+            $foot[] = "> [!TIP]\n" . implode("\n", array_map(fn($l) => $l === '' ? '>' : '> ' . $l, explode("\n", trim($this->convert((string)$guide->meta['side_box'], '/' . $g, $homeFile)))));
             $foot[] = '';
         }
         $foot[] = (string)($guide->meta['authors'] ?? '') . ' · ' . (string)($guide->meta['edition'] ?? '') . $this->updated($guide);
@@ -181,7 +192,7 @@ class DocsifyWriter
         [$above, $below] = $this->splitAtSeparator($page->body);
         $lines = [Helpers::gravNote($page), ''];
         $lines = array_merge($lines, Helpers::generated(['# ' . ($page->meta['title'] ?? 'Guides'), '', (string)($page->meta['subtitle'] ?? '')]), ['']);
-        $lines[] = trim($above);
+        $lines[] = trim($this->convert($above, '/' . $page->slug(), 'home.md'));
         $lines[] = '';
         // search lives in each guide's sidebar, which the Guides page and guide homes hide
         $lines = array_merge($lines, Helpers::generated(array_merge(
@@ -190,7 +201,7 @@ class DocsifyWriter
             ['</div>']
         )), ['']);
         if (trim($below) !== '') {
-            $lines = array_merge($lines, ['<!-- grav:=== -->', '', trim($below), '']);
+            $lines = array_merge($lines, ['<!-- grav:=== -->', '', trim($this->convert($below, '/' . $page->slug(), 'home.md')), '']);
         }
         $lines = array_merge($lines, Helpers::generated(['<!-- Hides the sidebar on this page -->', self::HIDE_SIDEBAR]));
         $this->writeFile('home.md', implode("\n", $lines));
@@ -202,9 +213,11 @@ class DocsifyWriter
         $this->writeFile($path, implode("\n", $lines));
     }
 
-    private function convert(string $markdown, string $guideSlug): string
+    // $gravPath: the page's address on the Grav site; $where: the Docsify file, for warnings
+    private function convert(string $markdown, string $gravPath, string $where): string
     {
-        return Links::toDocsify(Callouts::toDocsify($markdown), $guideSlug, $this->single);
+        $markdown = Links::toDocsify(Callouts::toDocsify($markdown), $this->guideSlugs, $this->single);
+        return Links::gravOnly($markdown, $gravPath, $this->siteUrl, $where, $this->warnings);
     }
 
     // A guide home's text is split by a line of === : the intro above the section cards, the rest below them

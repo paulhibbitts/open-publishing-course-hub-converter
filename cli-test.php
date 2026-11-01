@@ -1,6 +1,6 @@
 <?php
 // Runs the converter from the command line, for testing on your own sites.
-//   php cli-test.php grav2docsify <pages folder> <output folder> [single]
+//   php cli-test.php grav2docsify <pages folder> <output folder> [single] [site=https://original-site]
 // The output works at the top of a repo shown by Docsify-This, or in a Starter Kit's docs/ folder.
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -8,10 +8,17 @@ use OPG\DocsifyWriter;
 use OPG\GravReader;
 
 [$script, $direction, $source, $out] = array_pad($argv, 4, null);
-$single = ($argv[4] ?? '') === 'single';
+$extra = array_slice($argv, 4);
+$single = in_array('single', $extra, true);
+$siteUrl = '';
+foreach ($extra as $arg) {
+    if (str_starts_with($arg, 'site=')) {
+        $siteUrl = substr($arg, 5);
+    }
+}
 
 if ($direction !== 'grav2docsify' || !$source || !$out) {
-    fwrite(STDERR, "Usage: php cli-test.php grav2docsify <pages folder> <output folder> [single]\n");
+    fwrite(STDERR, "Usage: php cli-test.php grav2docsify <pages folder> <output folder> [single] [site=https://original-site]\n");
     exit(1);
 }
 if (!is_dir($source)) {
@@ -20,5 +27,9 @@ if (!is_dir($source)) {
 }
 
 $site = (new GravReader())->read(rtrim($source, '/'));
-(new DocsifyWriter())->write($site, rtrim($source, '/'), rtrim($out, '/'), $single);
+$writer = new DocsifyWriter();
+$writer->write($site, rtrim($source, '/'), rtrim($out, '/'), $single, $siteUrl);
+foreach ($writer->warnings as $warning) {
+    echo 'Warning – ' . $warning . "\n";
+}
 echo 'Converted ' . count($single ? array_slice($site->guides, 0, 1) : $site->guides) . " guide(s) to $out\n";

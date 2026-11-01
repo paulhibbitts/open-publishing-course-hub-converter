@@ -99,7 +99,27 @@ if (!$site->guides) {
     fail('No Open Publishing Space guides were found in that zip.');
 }
 $single = !empty($_POST['single']);
-(new DocsifyWriter())->write($site, $pagesDir, $out, $single);
+// the original site's address, for links to its pages that aren't guides (optional)
+$siteUrl = trim((string)($_POST['site_url'] ?? ''));
+if ($siteUrl !== '' && !preg_match('#^https?://[^\s]+$#', $siteUrl)) {
+    fail('The original site address should start with https:// (for example https://example.org).');
+}
+$writer = new DocsifyWriter();
+$writer->write($site, $pagesDir, $out, $single, $siteUrl);
+
+// notes on what was converted, and anything to check, saved with the pages
+$guides = $single ? array_slice($site->guides, 0, 1) : $site->guides;
+$notes = ['Open Publishing Guides Converter – conversion notes', '', 'Guides converted: ' . count($guides)];
+foreach ($guides as $guide) {
+    $pages = array_sum(array_map(fn($s) => 1 + count($s->children), $guide->children));
+    $notes[] = '- ' . $guide->title() . ' (' . count($guide->children) . ' sections, ' . $pages . ' pages)';
+}
+$notes[] = '';
+$notes[] = $writer->warnings ? 'To check:' : 'Nothing to check.';
+foreach (array_unique($writer->warnings) as $warning) {
+    $notes[] = '- ' . $warning;
+}
+file_put_contents($out . '/conversion-notes.txt', implode("\n", $notes) . "\n");
 
 $result = $work . '/result.zip';
 $zip = new ZipArchive();
@@ -114,5 +134,6 @@ $base = preg_replace('/[^a-z0-9-]+/', '-', strtolower(pathinfo($upload['name'], 
 header('Content-Type: application/zip');
 header('Content-Disposition: attachment; filename="' . trim($base, '-') . '-docsify.zip"');
 header('Content-Length: ' . filesize($result));
-header('X-Guides-Converted: ' . count($single ? array_slice($site->guides, 0, 1) : $site->guides));
+header('X-Guides-Converted: ' . count($guides));
+header('X-Warnings: ' . count(array_unique($writer->warnings)));
 readfile($result);

@@ -218,8 +218,11 @@ class DocsifyFirstReader
         if (!isset($card['cover_source'])) {
             return;
         }
-        $guide->images[] = $card['cover_image'];
-        $guide->imageSources[$card['cover_image']] = $card['cover_source'];
+        $source = Helpers::imageInside($this->dir, $card['cover_source']);
+        if ($source !== '') {
+            $guide->images[] = $card['cover_image'];
+            $guide->imageSources[$card['cover_image']] = $source;
+        }
     }
 
     // ---- sections and pages ----
@@ -252,8 +255,11 @@ class DocsifyFirstReader
             // the card's image, from the guide home's folder
             $imageName = basename($card['image']);
             $settings['image'] = $imageName;
-            $section->images[] = $imageName;
-            $section->imageSources[$imageName] = $this->dir . '/' . $this->folderOf($homeFile) . $card['image'];
+            $source = Helpers::imageInside($this->dir, $this->dir . '/' . $this->folderOf($homeFile) . $card['image']);
+            if ($source !== '') {
+                $section->images[] = $imageName;
+                $section->imageSources[$imageName] = $source;
+            }
         }
         $settings['child_type'] = 'section-page';
         // the section label ('Section', 'Part' …) is passed up to the guide, then removed
@@ -649,9 +655,10 @@ class DocsifyFirstReader
             if (str_contains($source, '://')) {
                 continue;
             }
-            $path = $this->dir . '/' . $this->folderOf($docsifyFile) . $source;
-            if (!is_file($path)) {
-                $this->notes[] = $docsifyFile . ': image "' . $source . '" wasn\'t found';
+            // only an image file inside the site is copied
+            $path = Helpers::imageInside($this->dir, $this->dir . '/' . $this->folderOf($docsifyFile) . $source);
+            if ($path === '') {
+                $this->notes[] = $docsifyFile . ': image "' . $source . '" wasn\'t found in the site';
                 continue;
             }
             $name = basename($source);

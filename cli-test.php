@@ -3,6 +3,11 @@
 //   php cli-test.php grav2docsify <pages folder> <output folder> [single] [site=https://original-site]
 //   php cli-test.php docsify2grav <Docsify site folder> <output pages folder>
 // The Docsify output works at the top of a repo shown by Docsify-This, or in a Starter Kit's docs/ folder.
+// only from the command line: on the web server it does nothing
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 require_once __DIR__ . '/vendor/autoload.php';
 
 use OPG\DocsifyReader;

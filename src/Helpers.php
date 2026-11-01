@@ -43,6 +43,24 @@ class Helpers
         return in_array($extension, self::IMAGE_EXTENSIONS, true);
     }
 
+    // An image file's full path, only when it really is inside $siteFolder (a link such as ../../etc/hosts in an
+    // uploaded site mustn't copy a file from elsewhere on the server); otherwise ''
+    public static function imageInside(string $siteFolder, string $path): string
+    {
+        if (!self::isImage($path)) {
+            return '';
+        }
+        $realSite = realpath($siteFolder);
+        $realPath = realpath($path);
+        if ($realSite === false || $realPath === false || !is_file($realPath)) {
+            return '';
+        }
+        if (!str_starts_with($realPath, $realSite . DIRECTORY_SEPARATOR)) {
+            return '';
+        }
+        return $realPath;
+    }
+
     // Grav's last_updated ('04-10-2026 00:00', day first) as shown on the cards ('Oct 4, 2026')
     public static function shortDate(string $value): string
     {

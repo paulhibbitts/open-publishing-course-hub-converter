@@ -417,7 +417,7 @@ class DocsifyWriter
         foreach ($page->images as $image) {
             $target = $this->out . '/' . ltrim($toFolder . '/' . $image, '/');
             if (!is_dir(dirname($target))) {
-                mkdir(dirname($target), 0777, true);
+                mkdir(dirname($target), 0700, true);
             }
             copy($this->pagesDir . '/' . $page->folder . '/' . $image, $target);
         }
@@ -427,7 +427,7 @@ class DocsifyWriter
     {
         $target = $this->out . '/' . $path;
         if (!is_dir(dirname($target))) {
-            mkdir(dirname($target), 0777, true);
+            mkdir(dirname($target), 0700, true);
         }
         file_put_contents($target, rtrim($text) . "\n");
     }

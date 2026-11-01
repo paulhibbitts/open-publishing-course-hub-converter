@@ -1,6 +1,6 @@
 <?php
-// Receives a zip, converts its guides, and sends back a zip: Open Publishing Space pages become Docsify pages, and a
-// Docsify guide site becomes Open Publishing Space pages (the zip's contents decide which).
+// Converts guides and sends back a zip: a Docsify guide site in a GitHub repo becomes Open Publishing Space pages,
+// and an uploaded zip of Open Publishing Space pages becomes Docsify pages.
 // Errors come back as plain text (with an error status), which the upload page shows.
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -18,6 +18,8 @@ function fail(string $message): void
 {
     http_response_code(400);
     header('Content-Type: text/plain; charset=utf-8');
+    // the message is only ever shown as text
+    header('X-Content-Type-Options: nosniff');
     echo $message;
     exit;
 }
@@ -46,6 +48,18 @@ function unzipPages(string $zipFile, string $into): void
     if ($zip->open($zipFile) !== true) {
         fail('That file isn\'t a zip file. Zip your site\'s pages folder and upload the zip.');
     }
+    // a small zip can unpack to a huge size (a "zip bomb"), so the number of files and their unzipped size are capped
+    if ($zip->numFiles > 20000) {
+        fail('That zip has too many files (more than 20,000).');
+    }
+    $unzippedSize = 0;
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entry = $zip->statIndex($i);
+        $unzippedSize += $entry['size'];
+    }
+    if ($unzippedSize > 500 * 1024 * 1024) {
+        fail('That zip unpacks to more than 500 MB.');
+    }
     for ($i = 0; $i < $zip->numFiles; $i++) {
         $name = $zip->getNameIndex($i);
         $isFolder = str_ends_with($name, '/');
@@ -57,7 +71,7 @@ function unzipPages(string $zipFile, string $into): void
         }
         $target = $into . '/' . $name;
         if (!is_dir(dirname($target))) {
-            mkdir(dirname($target), 0777, true);
+            mkdir(dirname($target), 0700, true);
         }
         file_put_contents($target, $zip->getFromIndex($i));
     }
@@ -136,6 +150,94 @@ function zipFolder(string $dir, string $zipFile): void
     $zip->close();
 }
 
+// Reads a GitHub address into its parts, or returns null when it isn't one. Accepts
+//   https://github.com/owner/repo                       (the repo's default branch)
+//   https://github.com/owner/repo/tree/main/docs        (a branch, and a folder in it)
+//   https://raw.githubusercontent.com/owner/repo/main/docs
+//   a docsify-this.net link, whose basePath is one of the addresses above
+function parseGitHubAddress(string $address): ?array
+{
+    $address = trim($address);
+    // a docsify-this.net link: the repo is in its basePath
+    $query = parse_url($address, PHP_URL_QUERY);
+    if (is_string($query) && str_contains($address, 'docsify-this')) {
+        parse_str($query, $parameters);
+        if (isset($parameters['basePath']) && is_string($parameters['basePath'])) {
+            $address = $parameters['basePath'];
+        }
+    }
+
+    // owner and repo names only use letters, numbers, - _ and .
+    $name = '[A-Za-z0-9_.-]+';
+    if (preg_match('#^https?://github\.com/(' . $name . ')/(' . $name . ')(?:/tree/(' . $name . ')(/[^?\#]*)?)?/?$#', $address, $found) === 1) {
+        $branch = '';
+        $folder = '';
+        if (isset($found[3])) {
+            $branch = $found[3];
+        }
+        if (isset($found[4])) {
+            $folder = $found[4];
+        }
+        return ['owner' => $found[1], 'repo' => preg_replace('/\.git$/', '', $found[2]), 'branch' => $branch, 'folder' => trim($folder, '/')];
+    }
+    if (preg_match('#^https?://raw\.githubusercontent\.com/(' . $name . ')/(' . $name . ')/(' . $name . ')(/[^?\#]*)?/?$#', $address, $found) === 1) {
+        $folder = '';
+        if (isset($found[4])) {
+            $folder = $found[4];
+        }
+        return ['owner' => $found[1], 'repo' => $found[2], 'branch' => $found[3], 'folder' => trim($folder, '/')];
+    }
+    return null;
+}
+
+// Downloads a GitHub repo as a zip (only ever from GitHub, at an address built here, never one sent in)
+function downloadGitHubZip(array $repo, string $target): void
+{
+    if (!function_exists('curl_init')) {
+        fail('This server can\'t download from GitHub. Download the repo as a zip on GitHub (Code → Download ZIP) and upload that instead.');
+    }
+    // HEAD is the repo's default branch
+    $branch = $repo['branch'];
+    if ($branch === '') {
+        $branch = 'HEAD';
+    }
+    $url = 'https://github.com/' . rawurlencode($repo['owner']) . '/' . rawurlencode($repo['repo']) . '/archive/' . rawurlencode($branch) . '.zip';
+
+    $file = fopen($target, 'w');
+    $download = curl_init($url);
+    curl_setopt($download, CURLOPT_FILE, $file);
+    // GitHub sends the zip from codeload.github.com, so its redirect is followed (HTTPS only)
+    curl_setopt($download, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($download, CURLOPT_MAXREDIRS, 3);
+    curl_setopt($download, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+    curl_setopt($download, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+    curl_setopt($download, CURLOPT_TIMEOUT, 120);
+    curl_setopt($download, CURLOPT_USERAGENT, 'Open Publishing Guides Converter');
+    // stop a download that grows past the 200 MB limit
+    curl_setopt($download, CURLOPT_NOPROGRESS, false);
+    curl_setopt($download, CURLOPT_PROGRESSFUNCTION, 'stopLargeDownloads');
+    $finished = curl_exec($download);
+    $status = curl_getinfo($download, CURLINFO_RESPONSE_CODE);
+    curl_close($download);
+    fclose($file);
+
+    if ($finished === false && filesize($target) > 200 * 1024 * 1024) {
+        fail('That repo is larger than the 200 MB limit.');
+    }
+    if ($finished === false || $status !== 200) {
+        fail('That repo couldn\'t be downloaded from GitHub. Check the address, and that the repo is public.');
+    }
+}
+
+// Called by curl while downloading: returning anything but 0 stops the download
+function stopLargeDownloads($download, $downloadTotal, $downloaded, $uploadTotal, $uploaded): int
+{
+    if ($downloaded > 200 * 1024 * 1024) {
+        return 1;
+    }
+    return 0;
+}
+
 // ---- the upload ----
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -143,23 +245,49 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// When the upload is larger than post_max_size, PHP empties $_FILES and $_POST entirely
+// When the upload is larger than post_max_size, PHP empties $_FILES and $_POST entirely (a repo address alone
+// sends no file, but its $_POST isn't empty)
 $uploadSize = 0;
 if (isset($_SERVER['CONTENT_LENGTH'])) {
     $uploadSize = (int)$_SERVER['CONTENT_LENGTH'];
 }
-if (count($_FILES) === 0 && $uploadSize > 0) {
+if (count($_FILES) === 0 && count($_POST) === 0 && $uploadSize > 0) {
     fail('The server rejected the upload – the file is probably larger than its limit (' . ini_get('post_max_size') . ').');
 }
-if (!isset($_FILES['site']) || $_FILES['site']['error'] === UPLOAD_ERR_NO_FILE) {
-    fail('No file was selected.');
+// either a zip file or a GitHub repo address
+$repoAddress = '';
+if (isset($_POST['repo'])) {
+    $repoAddress = trim((string)$_POST['repo']);
 }
-$upload = $_FILES['site'];
-if ($upload['error'] !== UPLOAD_ERR_OK) {
-    fail('The upload didn\'t finish (error code ' . $upload['error'] . '). Please try again.');
-}
-if ($upload['size'] > 200 * 1024 * 1024) {
-    fail('The file is larger than the 200 MB limit.');
+$hasFile = isset($_FILES['site']) && $_FILES['site']['error'] !== UPLOAD_ERR_NO_FILE;
+$repo = null;
+if (!$hasFile) {
+    if ($repoAddress === '') {
+        fail('Choose a zip file, or enter a GitHub repo address.');
+    }
+    $repo = parseGitHubAddress($repoAddress);
+    if ($repo === null) {
+        fail('That isn\'t a GitHub repo address. It should look like https://github.com/your-name/your-repo');
+    }
+} else {
+    $upload = $_FILES['site'];
+    if ($upload['error'] !== UPLOAD_ERR_OK) {
+        fail('The upload didn\'t finish (error code ' . $upload['error'] . '). Please try again.');
+    }
+    if ($upload['size'] > 200 * 1024 * 1024) {
+        fail('The file is larger than the 200 MB limit.');
+    }
+    if (strtolower(pathinfo($upload['name'], PATHINFO_EXTENSION)) !== 'zip') {
+        fail('Please upload a .zip file of your site\'s user/pages folder.');
+    }
+    // the file's type is checked from its content, not just its name
+    if (function_exists('finfo_open')) {
+        $fileInfo = new finfo(FILEINFO_MIME_TYPE);
+        $type = $fileInfo->file($upload['tmp_name']);
+        if ($type !== 'application/zip' && $type !== 'application/x-zip-compressed') {
+            fail('That file isn\'t a zip file. Zip your site\'s pages folder and upload the zip.');
+        }
+    }
 }
 
 // the options
@@ -175,23 +303,60 @@ if ($siteUrl !== '' && preg_match('#^https?://\S+$#', $siteUrl) !== 1) {
 // a temporary folder for this conversion, removed however the request ends (fail() exits, which would skip
 // any clean-up written after it, so it's registered to run at shutdown)
 $work = sys_get_temp_dir() . '/opg-' . bin2hex(random_bytes(8));
-mkdir($work . '/in', 0777, true);
-mkdir($work . '/out', 0777, true);
+// 0700: only the web server can read the uploaded pages while they're being converted
+mkdir($work . '/in', 0700, true);
+mkdir($work . '/out', 0700, true);
 register_shutdown_function('removeFolder', $work);
 
-unzipPages($upload['tmp_name'], $work . '/in');
+$searchFolder = $work . '/in';
+if ($repo !== null) {
+    downloadGitHubZip($repo, $work . '/repo.zip');
+    unzipPages($work . '/repo.zip', $work . '/in');
+    // GitHub's zip holds one folder (repo-branch); a folder in the address (such as docs) is inside it
+    $topFolders = glob($work . '/in/*', GLOB_ONLYDIR);
+    if (count($topFolders) === 1 && $repo['folder'] !== '') {
+        $searchFolder = $topFolders[0] . '/' . $repo['folder'];
+        if (!is_dir($searchFolder)) {
+            fail('The folder "' . $repo['folder'] . '" wasn\'t found in that repo.');
+        }
+    }
+    $fileName = $repo['repo'];
+} else {
+    unzipPages($upload['tmp_name'], $work . '/in');
+    $fileName = pathinfo($upload['name'], PATHINFO_FILENAME);
+}
 
 // ---- the conversion ----
+// A repo address is a Docsify guide site, converted to Grav; an uploaded zip is Grav pages, converted to Docsify.
 
-$pagesFolder = findPagesFolder($work . '/in');
-$docsifyFolder = findDocsifyFolder($work . '/in');
-if ($pagesFolder !== '') {
-    // Open Publishing Space pages → Docsify
+if ($repo !== null) {
+    $docsifyFolder = findDocsifyFolder($searchFolder);
+    if ($docsifyFolder === '') {
+        if (findPagesFolder($searchFolder) !== '') {
+            fail('That repo has Grav pages, not a Docsify site. To convert them to Docsify, zip its pages folder and use "Grav guides to Docsify".');
+        }
+        fail('No Docsify guide site was found in that repo. It needs a home.md, and a _sidebar.md with each guide\'s reading order.');
+    }
+    $direction = 'grav';
+    $reader = new DocsifyReader();
+    $site = $reader->read($docsifyFolder);
+    if (count($site->guides) === 0) {
+        fail('No guides were found in that Docsify site. Each guide needs a sidebar (_sidebar.md) with its reading order.');
+    }
+    // a pages folder, for the Grav site's user folder
+    (new GravWriter())->write($site, $work . '/out/pages');
+    $guides = $site->guides;
+    $warnings = array_values(array_unique($reader->notes));
+} else {
+    $pagesFolder = findPagesFolder($searchFolder);
+    if ($pagesFolder === '') {
+        if (findDocsifyFolder($searchFolder) !== '') {
+            fail('That zip has a Docsify site, not Grav pages. To convert it to Grav, enter its GitHub repo address under "Docsify guides to Grav".');
+        }
+        fail('No Open Publishing Space guides were found in that zip. Each guide is a folder with a section-list.md page, inside your site\'s user/pages folder.');
+    }
     $direction = 'docsify';
     $site = (new GravReader())->read($pagesFolder);
-    if (count($site->guides) === 0) {
-        fail('No Open Publishing Space guides were found in that zip.');
-    }
     $writer = new DocsifyWriter();
     $writer->write($site, $pagesFolder, $work . '/out', $single, $siteUrl);
     $guides = $site->guides;
@@ -199,29 +364,15 @@ if ($pagesFolder !== '') {
         $guides = array_slice($site->guides, 0, 1);
     }
     $warnings = array_values(array_unique($writer->warnings));
-    writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
-} elseif ($docsifyFolder !== '') {
-    // a Docsify guide site → Open Publishing Space pages, in a pages folder for the site's user folder
-    $direction = 'grav';
-    $reader = new DocsifyReader();
-    $site = $reader->read($docsifyFolder);
-    if (count($site->guides) === 0) {
-        fail('No guides were found in that Docsify site. It needs a sidebar (_sidebar.md) with the reading order.');
-    }
-    (new GravWriter())->write($site, $work . '/out/pages');
-    $guides = $site->guides;
-    $warnings = array_values(array_unique($reader->notes));
-    writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
-} else {
-    fail('No guides were found in that zip. Upload a zip of your Open Publishing Space site\'s user/pages folder, or of a Docsify guide site (with its home.md and _sidebar.md files).');
 }
+writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
 
 // ---- the download ----
 
 $resultZip = $work . '/result.zip';
 zipFolder($work . '/out', $resultZip);
 
-$baseName = strtolower(pathinfo($upload['name'], PATHINFO_FILENAME));
+$baseName = strtolower($fileName);
 $baseName = trim(preg_replace('/[^a-z0-9-]+/', '-', $baseName), '-');
 if ($baseName === '') {
     $baseName = 'guides';
@@ -229,6 +380,9 @@ if ($baseName === '') {
 header('Content-Type: application/zip');
 header('Content-Disposition: attachment; filename="' . $baseName . '-' . $direction . '.zip"');
 header('Content-Length: ' . filesize($resultZip));
+// each download is made for one request, so it isn't kept in any cache
+header('Cache-Control: no-cache, no-store');
+header('Pragma: no-cache');
 // the page reads these to say what happened
 header('X-Converted-To: ' . $direction);
 header('X-Guides-Converted: ' . count($guides));

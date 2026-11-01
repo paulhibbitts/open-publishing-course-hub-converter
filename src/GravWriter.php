@@ -29,7 +29,7 @@ class GravWriter
     {
         $folder = $out . '/' . $page->folder;
         if (!is_dir($folder)) {
-            mkdir($folder, 0777, true);
+            mkdir($folder, 0700, true);
         }
         $text = "---\n" . rtrim($page->yaml) . "\n---\n\n" . trim($page->body) . "\n";
         file_put_contents($folder . '/' . $page->file, $text);

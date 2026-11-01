@@ -71,9 +71,14 @@ class DocsifyReader
                 $images = $note['where']['images'];
             }
             foreach ($images as $image) {
-                $page->images[] = $image;
-                // images are beside the Docsify page (a page's images are in its section's folder)
-                $page->imageSources[$image] = dirname($note['path']) . '/' . $image;
+                // images are beside the Docsify page (a page's images are in its section's folder); only a plain
+                // file name, for an image inside the site, is used
+                $image = basename((string)$image);
+                $source = Helpers::imageInside($this->dir, dirname($note['path']) . '/' . $image);
+                if ($source !== '') {
+                    $page->images[] = $image;
+                    $page->imageSources[$image] = $source;
+                }
             }
             $pagesByFolder[$page->folder] = $page;
         }

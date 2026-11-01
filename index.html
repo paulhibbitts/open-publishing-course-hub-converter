@@ -7,6 +7,8 @@
 <title>Open Publishing Guides Converter</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><style>path{stroke:%232c2a27}@media (prefers-color-scheme:dark){path{stroke:%23e8e6e3}}</style><path d='M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4'/><path d='M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4'/></svg>">
 <link rel="stylesheet" href="assets/shared.css">
+<!-- marked.js turns the preview's Markdown into HTML -->
+<script src="marked.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- The hibbittsdesign.org skin, as on the other converters. This converter spans both product families
      (Grav plum and Docsify green), so its accent is the neutral steel blue of the main site: the Tailwind
@@ -32,6 +34,70 @@
   .chip-grav { background: var(--helios-soft); color: var(--helios); }
   .chip-docsify { background: var(--docsify-soft); color: var(--docsify); }
   code { font-family: var(--font-mono); font-size: 0.88em; }
+  /* ── Preview panel, as in the other converters ── */
+  .pv-panel { display: none; border: 1px solid #d6d3d1; border-radius: 12px; overflow: hidden; background: #fff; }
+  .pv-panel.open { display: block; }
+  /* when the preview scrolls into view, it stops below the sticky page header */
+  .pv-panel { scroll-margin-top: 10rem; }
+  @media (prefers-color-scheme: dark) { .pv-panel { border-color: #44403c; background: #1e2023; } }
+  .pv-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.75rem 1rem; }
+  .pv-panel-head .pv-label { font-size: 0.85rem; font-weight: 600; }
+  .pv-panel-head .pv-note { font-size: 0.7rem; color: #78716c; }
+  .pv-tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; padding: 0 1rem 0.75rem; }
+  .pv-tab { font-size: 0.74rem; padding: 4px 10px; border-radius: 99px; border: 1px solid #d6d3d1; background: transparent; color: #57534e; cursor: pointer; }
+  .pv-tab.active { background: #e3edf6; border-color: #a3c1dc; color: #3d6f9e; font-weight: 600; }
+  @media (prefers-color-scheme: dark) {
+    .pv-tab { border-color: #57534e; color: #a8a29e; }
+    .pv-tab.active { background: #1d2c3b; border-color: #3d6f9e; color: #7fabd6; }
+  }
+  .pv-frame { background: #ECEAE2; padding: 1.1rem 1.25rem 1.6rem; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  @media (prefers-color-scheme: dark) { .pv-frame { background: #1C1A16; } }
+  .pv-chrome-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.5rem 0.8rem; background: #F5F3EC; border: 1px solid #D9D4C5; border-radius: 8px; margin-bottom: 1rem; }
+  @media (prefers-color-scheme: dark) { .pv-chrome-bar { background: #232019; border-color: #3A362C; } }
+  .pv-breadcrumb { font-size: 0.68rem; color: #8B856E; word-break: break-all; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+  .pv-view-toggle { display: flex; gap: 0.35rem; }
+  .pv-raw { margin: 0; padding: 0.9rem 1rem; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.78rem; line-height: 1.55; color: #221F19; background: #F5F3EC; border: 1px solid #D9D4C5; border-radius: 8px; }
+  @media (prefers-color-scheme: dark) { .pv-raw { color: #EDE9DD; background: #232019; border-color: #3A362C; } }
+  .pv-body { color: #221F19; overflow-wrap: break-word; }
+  @media (prefers-color-scheme: dark) { .pv-body { color: #EDE9DD; } }
+  .pv-body p { line-height: 1.65; font-size: 0.92rem; margin: 0 0 0.95rem; max-width: 62ch; }
+  .pv-body h1 { font-size: 1.25rem; margin: 0 0 1rem; font-weight: 600; line-height: 1.28; }
+  .pv-body h2 { font-size: 1.05rem; margin: 1.6rem 0 0.7rem; font-weight: 600; }
+  .pv-body h3 { font-size: 0.95rem; margin: 1.3rem 0 0.6rem; font-weight: 600; }
+  .pv-body ol, .pv-body ul { padding-left: 1.2rem; font-size: 0.88rem; margin: 0 0 0.95rem; }
+  .pv-body ul { list-style: disc; } .pv-body ol { list-style: decimal; }
+  .pv-body li { margin-bottom: 0.3rem; }
+  .pv-body a { color: #3d6f9e; text-decoration: underline; }
+  @media (prefers-color-scheme: dark) { .pv-body a { color: #7fabd6; } }
+  .pv-body img { max-width: 100%; border-radius: 6px; margin: 0.4rem 0; }
+  .pv-body table { font-size: 0.82rem; border-collapse: collapse; margin: 0 0 1rem; }
+  .pv-body th, .pv-body td { border: 1px solid #D9D4C5; padding: 0.3rem 0.5rem; text-align: left; }
+  .pv-body .card { border: 1px solid #D9D4C5; border-radius: 8px; padding: 0.7rem 0.9rem; margin: 0 0 0.8rem; }
+  .pv-callout { border-left: 3px solid; border-radius: 6px; padding: 0.7rem 1rem; margin: 1rem 0 1.3rem; font-size: 0.88rem; }
+  .pv-callout p { margin: 0 0 0.4rem; max-width: none; }
+  .pv-callout .pv-lbl { font-weight: 600; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; display: block; margin-bottom: 0.3rem; }
+  .pv-callout.tip { background: #f0fdfa; border-color: #0f766e; } .pv-callout.tip .pv-lbl { color: #0f766e; }
+  .pv-callout.note { background: #eff6ff; border-color: #1e40af; } .pv-callout.note .pv-lbl { color: #1e40af; }
+  .pv-callout.important { background: #f5f3ff; border-color: #6d28d9; } .pv-callout.important .pv-lbl { color: #6d28d9; }
+  .pv-callout.warning { background: #fffbeb; border-color: #b45309; } .pv-callout.warning .pv-lbl { color: #b45309; }
+  .pv-callout.caution { background: #fef2f2; border-color: #b91c1c; } .pv-callout.caution .pv-lbl { color: #b91c1c; }
+  @media (prefers-color-scheme: dark) {
+    .pv-callout.tip { background: #134e4a; } .pv-callout.tip .pv-lbl { color: #5eead4; }
+    .pv-callout.note { background: #17223f; } .pv-callout.note .pv-lbl { color: #93c5fd; }
+    .pv-callout.important { background: #2e1065; } .pv-callout.important .pv-lbl { color: #c4b5fd; }
+    .pv-callout.warning { background: #3f2d0a; } .pv-callout.warning .pv-lbl { color: #fcd34d; }
+    .pv-callout.caution { background: #3b0a0a; } .pv-callout.caution .pv-lbl { color: #fca5a5; }
+  }
+  .pv-settings { font-size: 0.75rem; margin: 0 0 1rem; border: 1px solid #D9D4C5; border-radius: 8px; background: #F5F3EC; padding: 0.5rem 0.8rem; }
+  @media (prefers-color-scheme: dark) { .pv-settings { background: #232019; border-color: #3A362C; } }
+  .pv-settings summary { cursor: pointer; font-weight: 600; color: #57534e; }
+  @media (prefers-color-scheme: dark) { .pv-settings summary { color: #a8a29e; } }
+  .pv-settings dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: 0.2rem 0.8rem; margin: 0.5rem 0 0; }
+  .pv-settings dt { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #8B856E; }
+  .pv-settings dd { margin: 0; overflow-wrap: anywhere; }
+  .pv-placeholder { display: inline-flex; gap: 0.4rem; border-radius: 6px; border: 1px dashed #D9D4C5; background: #F5F3EC; padding: 0.4rem 0.7rem; margin: 0.2rem 0; font-size: 0.72rem; color: #8B856E; }
+  .pv-error { padding: 1rem; font-size: 0.85rem; color: #991b1b; }
+  @media (prefers-color-scheme: dark) { .pv-error { color: #fca5a5; } }
 </style>
 </head>
 <body class="font-sans bg-stone-100 dark:bg-stone-900 text-stone-900 dark:text-stone-200 min-h-screen flex flex-col items-center">
@@ -83,10 +149,16 @@
         <li class="flex items-start gap-3 text-[14px] text-stone-500 dark:text-stone-400"><div class="shrink-0 w-[22px] h-[22px] bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-400 rounded-full text-xs font-semibold flex items-center justify-center mt-px" aria-hidden="true">2</div><span>Put the unzipped <code>pages</code> folder in your Open Publishing Space site's <code>user</code> folder, keeping a copy of the old one.</span></li>
       </ol>
 
-      <button type="submit" class="w-full py-[10px] text-[15px] font-medium bg-sky-700 dark:bg-sky-600 text-white border border-sky-800 dark:border-sky-500 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-800 disabled:opacity-40 disabled:cursor-default inline-flex items-center justify-center gap-2" id="repo-button" disabled>
+      <div class="flex items-stretch gap-3 flex-wrap">
+      <button type="submit" class="flex-1 min-w-[200px] py-[10px] text-[15px] font-medium bg-sky-700 dark:bg-sky-600 text-white border border-sky-800 dark:border-sky-500 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-800 disabled:opacity-40 disabled:cursor-default inline-flex items-center justify-center gap-2" id="repo-button" disabled>
         <svg class="convert-spinner hidden animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-opacity="0.3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         <span class="button-text">Convert &amp; Download ZIP</span>
       </button>
+        <button type="button" id="repo-preview" class="inline-flex items-center justify-center gap-2 py-[10px] px-[14px] text-[13px] font-medium text-sky-700 dark:text-sky-400 bg-transparent border border-sky-200 dark:border-sky-800 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-50 dark:enabled:hover:bg-sky-950 disabled:opacity-40 disabled:cursor-default" disabled>
+          <svg class="convert-spinner hidden animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-opacity="0.3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <span class="button-text">Preview sample pages</span>
+        </button>
+      </div>
     </form>
   </div>
 
@@ -131,11 +203,38 @@
         <span class="text-xs text-stone-500 dark:text-stone-400 pl-[21px]">For a site with one guide, like the Guide Site template: the guide's home becomes the site's home page, with no Guides page. If the zip has several guides, the first one is used.</span>
       </div>
 
-      <button type="submit" class="w-full py-[10px] text-[15px] font-medium bg-sky-700 dark:bg-sky-600 text-white border border-sky-800 dark:border-sky-500 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-800 disabled:opacity-40 disabled:cursor-default inline-flex items-center justify-center gap-2" id="zip-button" disabled>
+      <div class="flex items-stretch gap-3 flex-wrap">
+      <button type="submit" class="flex-1 min-w-[200px] py-[10px] text-[15px] font-medium bg-sky-700 dark:bg-sky-600 text-white border border-sky-800 dark:border-sky-500 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-800 disabled:opacity-40 disabled:cursor-default inline-flex items-center justify-center gap-2" id="zip-button" disabled>
         <svg class="convert-spinner hidden animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-opacity="0.3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         <span class="button-text">Convert &amp; Download ZIP</span>
       </button>
+        <button type="button" id="zip-preview" class="inline-flex items-center justify-center gap-2 py-[10px] px-[14px] text-[13px] font-medium text-sky-700 dark:text-sky-400 bg-transparent border border-sky-200 dark:border-sky-800 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-50 dark:enabled:hover:bg-sky-950 disabled:opacity-40 disabled:cursor-default" disabled>
+          <svg class="convert-spinner hidden animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-opacity="0.3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <span class="button-text">Preview sample pages</span>
+        </button>
+      </div>
     </form>
+  </div>
+
+  <!-- the preview of either card's conversion -->
+  <div class="max-w-[68ch] mx-auto mb-4">
+    <div class="pv-panel" id="preview-panel">
+      <div class="pv-panel-head">
+        <span class="pv-label" id="preview-label">Preview</span>
+        <span class="pv-note">Sample pages – final appearance depends on the site's theme</span>
+      </div>
+      <div class="pv-tabs" id="preview-tabs"></div>
+      <div class="pv-frame">
+        <div class="pv-chrome-bar">
+          <span class="pv-breadcrumb" id="preview-path"></span>
+          <div class="pv-view-toggle" id="preview-view-toggle">
+            <button type="button" class="pv-tab active" data-view-mode="rendered">Preview</button>
+            <button type="button" class="pv-tab" data-view-mode="markdown">Markdown</button>
+          </div>
+        </div>
+        <div class="pv-body" id="preview-content"></div>
+      </div>
+    </div>
   </div>
 
   <div class="max-w-[68ch] mx-auto">
@@ -167,6 +266,8 @@ var repoButton = document.getElementById('repo-button');
 var zipButton = document.getElementById('zip-button');
 var errorBox = document.getElementById('error-box');
 var doneBox = document.getElementById('done-box');
+var repoPreviewButton = document.getElementById('repo-preview');
+var zipPreviewButton = document.getElementById('zip-preview');
 var chosenFile = null;
 
 function showError(message) {
@@ -195,23 +296,27 @@ function chooseFile(file) {
     document.getElementById('file-size').textContent = (chosenFile.size / 1048576).toFixed(1) + ' MB';
     fileSelected.style.display = 'flex';
     zipButton.disabled = false;
+    zipPreviewButton.disabled = false;
   } else {
     fileSelected.style.display = 'none';
     zipButton.disabled = true;
+    zipPreviewButton.disabled = true;
   }
 }
 
-// Shows the spinner and "Converting…" on a form's button while it works
+// Shows the spinner and a "working" text on a button while it works, then puts its own text back
 function setConverting(button, isConverting) {
   button.disabled = isConverting;
   var spinner = button.querySelector('.convert-spinner');
   var buttonText = button.querySelector('.button-text');
   if (isConverting) {
+    // the button's own text is kept in a data- attribute, to put back afterwards
+    button.dataset.text = buttonText.textContent;
     spinner.classList.remove('hidden');
     buttonText.textContent = 'Converting…';
   } else {
     spinner.classList.add('hidden');
-    buttonText.textContent = 'Convert & Download ZIP';
+    buttonText.textContent = button.dataset.text;
   }
 }
 
@@ -286,7 +391,9 @@ function convert(data, button) {
 
 // Docsify to Grav: the repo address
 repoAddress.addEventListener('input', function () {
-  repoButton.disabled = repoAddress.value.trim() === '';
+  var isEmpty = repoAddress.value.trim() === '';
+  repoButton.disabled = isEmpty;
+  repoPreviewButton.disabled = isEmpty;
 });
 document.getElementById('repo-form').addEventListener('submit', function (event) {
   event.preventDefault();
@@ -340,6 +447,260 @@ document.getElementById('zip-form').addEventListener('submit', function (event) 
   }
   data.append('site_url', document.getElementById('site-url').value.trim());
   convert(data, zipButton);
+});
+// ---- the preview ----
+
+var previewPanel = document.getElementById('preview-panel');
+var previewTabs = document.getElementById('preview-tabs');
+var previewPath = document.getElementById('preview-path');
+var previewContent = document.getElementById('preview-content');
+var previewPages = [];
+var previewDirection = '';
+var currentPage = 0;
+var viewMode = 'rendered';
+
+// Grav's callout shortcodes: name => [callout type, default heading] (as in src/Callouts.php)
+var shortcodes = {
+  'objectives': ['TIP', 'Learning Objectives'], 'key-takeaways': ['NOTE', 'Key Takeaways'],
+  'reflection': ['TIP', 'Reflection'], 'definition': ['NOTE', 'Definition'], 'example': ['IMPORTANT', 'Example'],
+  'case-study': ['CAUTION', 'Case Study'], 'project-brief': ['WARNING', 'Project Brief'],
+  'process-note': ['NOTE', 'Process Note'], 'feedback-requested': ['IMPORTANT', 'Feedback Requested'],
+  'exercise': ['TIP', 'Exercise'], 'announcement': ['IMPORTANT', 'Announcement']
+};
+
+// Grav: [reflection title="Think"]text[/reflection] → a > [!TIP] callout, so the preview shows it as on the site
+function shortcodesToCallouts(markdown) {
+  var names = Object.keys(shortcodes).join('|');
+  var pattern = new RegExp('\\[(' + names + ')((?: [^\\]]*)?)\\]\\n?([\\s\\S]*?)\\[\\/\\1\\]', 'g');
+  markdown = markdown.replace(pattern, function (whole, name, attributes, text) {
+    var type = shortcodes[name][0];
+    var heading = shortcodes[name][1];
+    var title = attributes.match(/title="([^"]*)"/);
+    if (title) {
+      heading = title[1];
+    }
+    var lines = ('**' + heading + '**\n\n' + text.trim()).split('\n');
+    var quoted = '> [!' + type + ']';
+    for (var i = 0; i < lines.length; i++) {
+      quoted += '\n> ' + lines[i];
+    }
+    return quoted;
+  });
+  // other shortcodes only set out the page in Grav, such as [topics]
+  return markdown.replace(/\[\/?(topics|showifembedded|hideifembedded)\]/g, '');
+}
+
+// marked.js shows > [!TIP] as a plain quote; this turns those quotes into styled callouts
+function styleCallouts(container) {
+  var quotes = container.querySelectorAll('blockquote');
+  for (var i = 0; i < quotes.length; i++) {
+    var firstParagraph = quotes[i].querySelector('p');
+    if (!firstParagraph) {
+      continue;
+    }
+    var found = firstParagraph.innerHTML.match(/^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\]\s*/);
+    if (!found) {
+      continue;
+    }
+    firstParagraph.innerHTML = firstParagraph.innerHTML.slice(found[0].length);
+    var callout = document.createElement('div');
+    callout.className = 'pv-callout ' + found[1].toLowerCase();
+    callout.innerHTML = '<span class="pv-lbl">' + found[1] + '</span>' + quotes[i].innerHTML;
+    quotes[i].replaceWith(callout);
+  }
+}
+
+// The preview shows pages from someone's repo or zip inside this page, so anything that could run code is removed:
+// scripts, styles, frames, on… event attributes and javascript: links
+function makeSafe(container) {
+  var unsafe = container.querySelectorAll('script, style, iframe, object, embed, form, link, meta');
+  for (var i = 0; i < unsafe.length; i++) {
+    var placeholder = document.createElement('span');
+    placeholder.className = 'pv-placeholder';
+    if (unsafe[i].tagName === 'IFRAME') {
+      placeholder.textContent = 'Embedded content – shown on the site';
+      unsafe[i].replaceWith(placeholder);
+    } else {
+      unsafe[i].remove();
+    }
+  }
+  var all = container.querySelectorAll('*');
+  for (var j = 0; j < all.length; j++) {
+    var attributes = all[j].attributes;
+    for (var k = attributes.length - 1; k >= 0; k--) {
+      var name = attributes[k].name.toLowerCase();
+      var value = attributes[k].value.trim().toLowerCase();
+      if (name.indexOf('on') === 0 || value.indexOf('javascript:') === 0) {
+        all[j].removeAttribute(attributes[k].name);
+      }
+    }
+    // links open in a new tab, so the converter page stays
+    if (all[j].tagName === 'A') {
+      all[j].setAttribute('target', '_blank');
+      all[j].setAttribute('rel', 'noopener noreferrer');
+    }
+  }
+}
+
+// Images are sent with the preview as data: addresses; any without one get a placeholder
+function showImages(container, images) {
+  var pictures = container.querySelectorAll('img');
+  for (var i = 0; i < pictures.length; i++) {
+    var source = pictures[i].getAttribute('src') || '';
+    if (/^https:\/\//.test(source)) {
+      continue;
+    }
+    if (images[source]) {
+      pictures[i].src = images[source];
+    } else {
+      var placeholder = document.createElement('span');
+      placeholder.className = 'pv-placeholder';
+      placeholder.textContent = 'Image not shown in the preview – included in the zip';
+      pictures[i].replaceWith(placeholder);
+    }
+  }
+}
+
+// A Grav page's settings (its front matter), folded away above its text
+function settingsBlock(settings) {
+  var details = document.createElement('details');
+  details.className = 'pv-settings';
+  var summary = document.createElement('summary');
+  summary.textContent = 'Page settings (' + settings.length + ')';
+  details.appendChild(summary);
+  var list = document.createElement('dl');
+  for (var i = 0; i < settings.length; i++) {
+    var name = document.createElement('dt');
+    name.textContent = settings[i][0];
+    var value = document.createElement('dd');
+    value.textContent = settings[i][1];
+    list.appendChild(name);
+    list.appendChild(value);
+  }
+  details.appendChild(list);
+  return details;
+}
+
+function showPreviewPage(index) {
+  currentPage = index;
+  var page = previewPages[index];
+  previewPath.textContent = page.path;
+  var tabs = previewTabs.querySelectorAll('.pv-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', i === index);
+  }
+  previewContent.innerHTML = '';
+
+  if (viewMode === 'markdown') {
+    // textContent shows the file exactly, without running any of it
+    var raw = document.createElement('pre');
+    raw.className = 'pv-raw';
+    raw.textContent = page.source;
+    previewContent.appendChild(raw);
+    return;
+  }
+
+  var markdown = page.markdown;
+  if (previewDirection === 'grav') {
+    markdown = shortcodesToCallouts(markdown);
+    // a Grav page's title is a setting, which the theme shows above the text
+    for (var t = 0; t < page.settings.length; t++) {
+      if (page.settings[t][0] === 'title') {
+        markdown = '# ' + page.settings[t][1] + '\n\n' + markdown;
+      }
+    }
+    if (page.settings.length > 0) {
+      previewContent.appendChild(settingsBlock(page.settings));
+    }
+  }
+  // DOMParser makes an inert document (nothing in it loads or runs), so it's cleaned before being shown
+  var parsed = new DOMParser().parseFromString(marked.parse(markdown), 'text/html');
+  makeSafe(parsed.body);
+  var rendered = document.createElement('div');
+  rendered.innerHTML = parsed.body.innerHTML;
+  showImages(rendered, page.images);
+  styleCallouts(rendered);
+  previewContent.appendChild(rendered);
+}
+
+function showPreview(data) {
+  previewPages = data.pages;
+  previewDirection = data.direction;
+  var label = 'Preview – Docsify pages';
+  if (data.direction === 'grav') {
+    label = 'Preview – Grav pages';
+  }
+  document.getElementById('preview-label').textContent = label;
+
+  previewTabs.innerHTML = '';
+  for (var i = 0; i < previewPages.length; i++) {
+    var tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'pv-tab';
+    tab.textContent = previewPages[i].label;
+    tab.dataset.index = i;
+    tab.addEventListener('click', function () {
+      showPreviewPage(Number(this.dataset.index));
+    });
+    previewTabs.appendChild(tab);
+  }
+  showPreviewPage(0);
+  previewPanel.classList.add('open');
+  previewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Asks convert.php for sample pages (preview=1) instead of the zip
+function preview(data, button) {
+  hideMessages();
+  data.append('preview', '1');
+  setConverting(button, true);
+  fetch('convert.php', { method: 'POST', body: data })
+    .then(function (response) {
+      return response.json();
+    })
+    .then(function (result) {
+      if (result.error) {
+        showError(result.error);
+        return;
+      }
+      showPreview(result);
+    })
+    .catch(function () {
+      showError('The preview couldn\'t be made. Check your connection and try again.');
+    })
+    .then(function () {
+      setConverting(button, false);
+    });
+}
+
+// the Preview / Markdown buttons
+var viewButtons = document.querySelectorAll('#preview-view-toggle .pv-tab');
+for (var v = 0; v < viewButtons.length; v++) {
+  viewButtons[v].addEventListener('click', function () {
+    viewMode = this.dataset.viewMode;
+    for (var b = 0; b < viewButtons.length; b++) {
+      viewButtons[b].classList.toggle('active', viewButtons[b] === this);
+    }
+    showPreviewPage(currentPage);
+  });
+}
+
+repoPreviewButton.addEventListener('click', function () {
+  var data = new FormData();
+  data.append('repo', repoAddress.value.trim());
+  preview(data, repoPreviewButton);
+});
+zipPreviewButton.addEventListener('click', function () {
+  if (!chosenFile) {
+    return;
+  }
+  var data = new FormData();
+  data.append('site', chosenFile);
+  if (document.getElementById('single').checked) {
+    data.append('single', '1');
+  }
+  data.append('site_url', document.getElementById('site-url').value.trim());
+  preview(data, zipPreviewButton);
 });
 </script>
 </body>

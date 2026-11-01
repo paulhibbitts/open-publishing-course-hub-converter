@@ -9,18 +9,28 @@ use OPG\DocsifyWriter;
 use OPG\GravReader;
 use OPG\GravWriter;
 use OPG\Helpers;
+use OPG\Preview;
 
 set_time_limit(300);
 ini_set('memory_limit', '512M');
 
-// Sends an error message back to the upload page and stops
+// true when the page asks for a preview (sample pages as JSON) instead of the zip
+$previewMode = isset($_POST['preview']) && $_POST['preview'] !== '';
+
+// Sends an error message back to the page and stops (as JSON for a preview)
 function fail(string $message): void
 {
+    global $previewMode;
     http_response_code(400);
-    header('Content-Type: text/plain; charset=utf-8');
     // the message is only ever shown as text
     header('X-Content-Type-Options: nosniff');
-    echo $message;
+    if ($previewMode) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => $message]);
+    } else {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $message;
+    }
     exit;
 }
 
@@ -366,6 +376,20 @@ if ($repo !== null) {
     $warnings = array_values(array_unique($writer->warnings));
 }
 writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
+
+// ---- a preview: sample pages instead of the zip ----
+
+if ($previewMode) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-cache, no-store');
+    $preview = new Preview($work . '/out');
+    $pages = $preview->samplePages($direction);
+    if (count($pages) === 0) {
+        fail('There were no pages to preview.');
+    }
+    echo json_encode(['direction' => $direction, 'pages' => $pages, 'warnings' => $warnings]);
+    exit;
+}
 
 // ---- the download ----
 

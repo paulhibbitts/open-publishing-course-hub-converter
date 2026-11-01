@@ -1,10 +1,13 @@
 <?php
-// Receives a zip of an Open Publishing Space site's pages, converts its guides to Docsify, and sends back a zip.
+// Receives a zip, converts its guides, and sends back a zip: Open Publishing Space pages become Docsify pages, and a
+// Docsify guide site becomes Open Publishing Space pages (the zip's contents decide which).
 // Errors come back as plain text (with an error status), which the upload page shows.
 require_once __DIR__ . '/vendor/autoload.php';
 
+use OPG\DocsifyReader;
 use OPG\DocsifyWriter;
 use OPG\GravReader;
+use OPG\GravWriter;
 use OPG\Helpers;
 
 set_time_limit(300);
@@ -80,6 +83,47 @@ function findPagesFolder(string $dir): string
     return $pagesFolder;
 }
 
+// A Docsify guide site's folder is the one with home.md (and _sidebar.md files), wherever it sits in the zip:
+// the top, a repo folder, or a Starter Kit's docs/ folder. Returns '' when there isn't one.
+function findDocsifyFolder(string $dir): string
+{
+    $docsifyFolder = '';
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($files as $file) {
+        if ($file->getFilename() !== 'home.md') {
+            continue;
+        }
+        $candidate = $file->getPath();
+        if ($docsifyFolder === '' || strlen($candidate) < strlen($docsifyFolder)) {
+            $docsifyFolder = $candidate;
+        }
+    }
+    return $docsifyFolder;
+}
+
+// Saves conversion-notes.txt: what was converted, and anything to check
+function writeNotes(string $file, array $guides, array $warnings): void
+{
+    $notes = ['Open Publishing Guides Converter – conversion notes', '', 'Guides converted: ' . count($guides)];
+    foreach ($guides as $guide) {
+        $pageCount = 0;
+        foreach ($guide->children as $section) {
+            $pageCount += 1 + count($section->children);
+        }
+        $notes[] = '- ' . $guide->title() . ' (' . count($guide->children) . ' sections, ' . $pageCount . ' pages)';
+    }
+    $notes[] = '';
+    if (count($warnings) > 0) {
+        $notes[] = 'To check:';
+        foreach ($warnings as $warning) {
+            $notes[] = '- ' . $warning;
+        }
+    } else {
+        $notes[] = 'Nothing to check.';
+    }
+    file_put_contents($file, implode("\n", $notes) . "\n");
+}
+
 function zipFolder(string $dir, string $zipFile): void
 {
     $zip = new ZipArchive();
@@ -136,45 +180,41 @@ mkdir($work . '/out', 0777, true);
 register_shutdown_function('removeFolder', $work);
 
 unzipPages($upload['tmp_name'], $work . '/in');
-$pagesFolder = findPagesFolder($work . '/in');
-if ($pagesFolder === '') {
-    fail('No Open Publishing Space guides were found in that zip. Each guide is a folder with a section-list.md page, inside your site\'s user/pages folder.');
-}
 
 // ---- the conversion ----
 
-$site = (new GravReader())->read($pagesFolder);
-if (count($site->guides) === 0) {
-    fail('No Open Publishing Space guides were found in that zip.');
-}
-$writer = new DocsifyWriter();
-$writer->write($site, $pagesFolder, $work . '/out', $single, $siteUrl);
-
-$guides = $site->guides;
-if ($single) {
-    $guides = array_slice($site->guides, 0, 1);
-}
-$warnings = array_values(array_unique($writer->warnings));
-
-// notes on what was converted, and anything to check, saved with the pages
-$notes = ['Open Publishing Guides Converter – conversion notes', '', 'Guides converted: ' . count($guides)];
-foreach ($guides as $guide) {
-    $pageCount = 0;
-    foreach ($guide->children as $section) {
-        $pageCount += 1 + count($section->children);
+$pagesFolder = findPagesFolder($work . '/in');
+$docsifyFolder = findDocsifyFolder($work . '/in');
+if ($pagesFolder !== '') {
+    // Open Publishing Space pages → Docsify
+    $direction = 'docsify';
+    $site = (new GravReader())->read($pagesFolder);
+    if (count($site->guides) === 0) {
+        fail('No Open Publishing Space guides were found in that zip.');
     }
-    $notes[] = '- ' . $guide->title() . ' (' . count($guide->children) . ' sections, ' . $pageCount . ' pages)';
-}
-$notes[] = '';
-if (count($warnings) > 0) {
-    $notes[] = 'To check:';
-    foreach ($warnings as $warning) {
-        $notes[] = '- ' . $warning;
+    $writer = new DocsifyWriter();
+    $writer->write($site, $pagesFolder, $work . '/out', $single, $siteUrl);
+    $guides = $site->guides;
+    if ($single) {
+        $guides = array_slice($site->guides, 0, 1);
     }
+    $warnings = array_values(array_unique($writer->warnings));
+    writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
+} elseif ($docsifyFolder !== '') {
+    // a Docsify guide site → Open Publishing Space pages, in a pages folder for the site's user folder
+    $direction = 'grav';
+    $reader = new DocsifyReader();
+    $site = $reader->read($docsifyFolder);
+    if (count($site->guides) === 0) {
+        fail('No guides were found in that Docsify site. It needs a sidebar (_sidebar.md) with the reading order.');
+    }
+    (new GravWriter())->write($site, $work . '/out/pages');
+    $guides = $site->guides;
+    $warnings = array_values(array_unique($reader->notes));
+    writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
 } else {
-    $notes[] = 'Nothing to check.';
+    fail('No guides were found in that zip. Upload a zip of your Open Publishing Space site\'s user/pages folder, or of a Docsify guide site (with its home.md and _sidebar.md files).');
 }
-file_put_contents($work . '/out/conversion-notes.txt', implode("\n", $notes) . "\n");
 
 // ---- the download ----
 
@@ -187,9 +227,10 @@ if ($baseName === '') {
     $baseName = 'guides';
 }
 header('Content-Type: application/zip');
-header('Content-Disposition: attachment; filename="' . $baseName . '-docsify.zip"');
+header('Content-Disposition: attachment; filename="' . $baseName . '-' . $direction . '.zip"');
 header('Content-Length: ' . filesize($resultZip));
 // the page reads these to say what happened
+header('X-Converted-To: ' . $direction);
 header('X-Guides-Converted: ' . count($guides));
 header('X-Warnings: ' . count($warnings));
 readfile($resultZip);

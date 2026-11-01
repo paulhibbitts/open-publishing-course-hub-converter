@@ -16,6 +16,22 @@ class Helpers
         return preg_replace('/^\d+\./', '', $folderName);
     }
 
+    // 'Open Education Essentials' → 'open-education-essentials' (for a folder name)
+    public static function slugify(string $text): string
+    {
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        if ($ascii !== false && $ascii !== '') {
+            $text = $ascii;
+        }
+        $text = strtolower($text);
+        $text = preg_replace('/[^a-z0-9]+/', '-', $text);
+        $text = trim($text, '-');
+        if ($text === '') {
+            return 'guide';
+        }
+        return $text;
+    }
+
     public static function titleFromSlug(string $slug): string
     {
         return ucwords(str_replace(['-', '_'], ' ', $slug));

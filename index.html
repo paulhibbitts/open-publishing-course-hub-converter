@@ -56,19 +56,18 @@
 
   <div class="flex flex-wrap items-center gap-2 mb-5 text-[13px] font-mono" aria-label="Directions">
     <span class="chip-grav rounded-full px-2.5 py-1 font-semibold">Grav Open Publishing Space</span>
-    <span class="text-stone-400" aria-hidden="true">→</span>
+    <span class="text-stone-400" aria-hidden="true">⇄</span>
     <span class="chip-docsify rounded-full px-2.5 py-1 font-semibold">Docsify-This or Starter Kit</span>
-    <span class="text-[12px] text-stone-500 dark:text-stone-400 font-sans">(Docsify → Grav is coming next)</span>
   </div>
 
-  <p class="text-[15px] text-stone-500 dark:text-stone-400 mb-5 leading-relaxed">Upload the pages of a <a href="https://github.com/hibbitts-design/grav-skeleton-open-publishing-space" class="tlink underline underline-offset-2">Grav Open Publishing Space</a> site and get its guides back as Docsify Markdown pages, laid out like the Docsify-This <strong>Multiple Guides Site</strong> and <strong>Guide Site</strong> templates: a Guides page, each guide's home with its section cards, its sections and pages, and a sidebar with the reading order.</p>
+  <p class="text-[15px] text-stone-500 dark:text-stone-400 mb-5 leading-relaxed">Upload the pages of a <a href="https://github.com/hibbitts-design/grav-skeleton-open-publishing-space" class="tlink underline underline-offset-2">Grav Open Publishing Space</a> site and get its guides back as Docsify Markdown pages, laid out like the Docsify-This <strong>Multiple Guides Site</strong> and <strong>Guide Site</strong> templates: a Guides page, each guide's home with its section cards, its sections and pages, and a sidebar with the reading order. The same pages work in a repo shown by <a href="https://docsify-this.net" class="tlink underline underline-offset-2">Docsify-This</a> and in a Docsify Starter Kit's <code>docs/</code> folder.</p>
 
-  <p class="text-[15px] text-stone-500 dark:text-stone-400 mb-5 leading-relaxed">The same pages work in a repo shown by <a href="https://docsify-this.net" class="tlink underline underline-offset-2">Docsify-This</a> and in a Docsify Starter Kit's <code>docs/</code> folder. Only guides are converted: blog posts and other pages aren't included.</p>
+  <p class="text-[15px] text-stone-500 dark:text-stone-400 mb-5 leading-relaxed">Or upload a Docsify guide site and get an Open Publishing Space <code>pages</code> folder: a Guides List page, and for each guide a Section List page with its sections and pages, and their settings. Pages this converter made go back exactly as they were. Only guides are converted: blog posts and other pages aren't included.</p>
 
   <ol class="flex flex-col gap-2.5 mb-6 list-none p-0">
     <li class="flex items-start gap-3 text-[15px] text-stone-500 dark:text-stone-400">
       <div class="shrink-0 w-[22px] h-[22px] bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-400 rounded-full text-xs font-semibold flex items-center justify-center mt-px" aria-hidden="true">1</div>
-      <span>Zip your site's <code>user/pages</code> folder (or the whole <code>user</code> folder).</span>
+      <span>Zip your Grav site's <code>user/pages</code> folder, or your Docsify guide site (a repo or a Starter Kit's <code>docs/</code> folder).</span>
     </li>
     <li class="flex items-start gap-3 text-[15px] text-stone-500 dark:text-stone-400">
       <div class="shrink-0 w-[22px] h-[22px] bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-400 rounded-full text-xs font-semibold flex items-center justify-center mt-px" aria-hidden="true">2</div>
@@ -76,7 +75,7 @@
     </li>
     <li class="flex items-start gap-3 text-[15px] text-stone-500 dark:text-stone-400">
       <div class="shrink-0 w-[22px] h-[22px] bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-400 rounded-full text-xs font-semibold flex items-center justify-center mt-px" aria-hidden="true">3</div>
-      <span>Put the unzipped files at the top of a GitHub repo for Docsify-This, or in a Starter Kit's <code>docs/</code> folder.</span>
+      <span>For Docsify, put the unzipped files at the top of a GitHub repo for Docsify-This, or in a Starter Kit's <code>docs/</code> folder. For Grav, put the <code>pages</code> folder in your site's <code>user</code> folder.</span>
     </li>
   </ol>
 
@@ -88,8 +87,8 @@
   <div id="done-box" class="max-w-[68ch] mx-auto rounded-lg px-[14px] py-[10px] text-sm mb-4 bg-sky-50 dark:bg-sky-950 border border-sky-200 dark:border-sky-900 text-sky-800 dark:text-sky-300" style="display:none" role="status" aria-live="polite"></div>
 
   <div class="max-w-[68ch] mx-auto bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl p-6 mb-4 shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)]">
-    <h2 class="text-[17px] font-semibold mb-1">Convert your guides to Docsify</h2>
-    <p class="text-sm text-stone-500 dark:text-stone-400 mb-5">Upload a zip of your Open Publishing Space pages.</p>
+    <h2 class="text-[17px] font-semibold mb-1">Convert your guides</h2>
+    <p class="text-sm text-stone-500 dark:text-stone-400 mb-5">Upload a zip of your Open Publishing Space pages or your Docsify guide site – the direction is worked out from what's inside.</p>
 
     <form method="POST" action="convert.php" enctype="multipart/form-data" id="convert-form">
       <div class="drop-zone border-2 border-dashed border-stone-300 dark:border-stone-600 rounded-lg py-5 px-8 text-center cursor-pointer bg-stone-50 dark:bg-[#1e2023] transition-colors duration-150 hover:border-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950" id="drop-zone" role="button" tabindex="0" aria-label="Upload a zip file – click or press Enter to browse">
@@ -112,7 +111,7 @@
         </label>
         <input type="url" name="site_url" id="site-url" placeholder="e.g. https://my-guides.example.org"
                class="w-full px-3 py-2 text-[14px] border border-stone-300 dark:border-stone-600 rounded-lg bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:border-sky-500">
-        <span class="block text-xs text-stone-500 dark:text-stone-400 mt-1">Links to pages that aren't guides (an About page, the blog) then point to your Grav site. Without it, they're listed in <code>conversion-notes.txt</code>.</span>
+        <span class="block text-xs text-stone-500 dark:text-stone-400 mt-1">Grav to Docsify only: links to pages that aren't guides (an About page, the blog) then point to your Grav site. Without it, they're listed in <code>conversion-notes.txt</code>.</span>
       </div>
 
       <div class="flex flex-col gap-[3px] my-5">
@@ -120,7 +119,7 @@
           <input type="checkbox" name="single" value="1" id="single">
           Single guide site
         </label>
-        <span class="text-xs text-stone-500 dark:text-stone-400 pl-[21px]">For a site with one guide, like the Guide Site template: the guide's home becomes the site's home page, with no Guides page. If the zip has several guides, the first one is used.</span>
+        <span class="text-xs text-stone-500 dark:text-stone-400 pl-[21px]">Grav to Docsify only, for a site with one guide like the Guide Site template: the guide's home becomes the site's home page, with no Guides page. If the zip has several guides, the first one is used.</span>
       </div>
 
       <button type="submit" class="w-full py-[10px] text-[15px] font-medium bg-sky-700 dark:bg-sky-600 text-white border border-sky-800 dark:border-sky-500 rounded-lg cursor-pointer transition-colors duration-150 enabled:hover:bg-sky-800 disabled:opacity-40 disabled:cursor-default inline-flex items-center justify-center gap-2" id="convert-btn" disabled>
@@ -132,9 +131,9 @@
     <details class="mt-6 border-t border-stone-200 dark:border-stone-700 pt-4">
       <summary class="text-[13px] text-stone-500 dark:text-stone-400 cursor-pointer select-none hover:text-stone-600 dark:hover:text-stone-300">What exactly does this do?</summary>
       <div class="mt-3 text-[13px] text-stone-500 dark:text-stone-400 leading-[1.7] flex flex-col gap-2">
-        <p>Each guide (a Section List page) becomes a folder with its home page, a folder per section with its pages, a <code>_sidebar.md</code> with the reading order (which also sets Previous/Next) and a <code>_navbar.md</code>. The Guides List page becomes <code>home.md</code>, with a card for each guide.</p>
-        <p>Callout shortcodes such as <code>[reflection]</code> become Docsify callouts, Learning Objectives appear at the top of each section, links between pages are adjusted, and images are copied beside their pages. Your own text is otherwise left as it is.</p>
-        <p>Each page also gets a hidden note with its original Grav settings. Docsify doesn't show it, and it will let the pages go back to Grav unchanged once the Docsify → Grav direction is ready.</p>
+        <p><strong>Grav to Docsify:</strong> each guide (a Section List page) becomes a folder with its home page, a folder per section with its pages, a <code>_sidebar.md</code> with the reading order (which also sets Previous/Next) and a <code>_navbar.md</code>. The Guides List page becomes <code>home.md</code>, with a card for each guide. Callout shortcodes such as <code>[reflection]</code> become Docsify callouts, Learning Objectives appear at the top of each section, links between pages are adjusted, and images are copied beside their pages. Each page also gets a hidden note with its original Grav settings, which Docsify doesn't show.</p>
+        <p><strong>Docsify to Grav:</strong> pages with that hidden note go back exactly as they were. For a site made in Docsify, the structure comes from its sidebars, and the settings from its pages: titles, section numbers, Learning Objectives, the section and guide cards, and the authors line. Settings only Grav has get the Open Publishing Space defaults. Callouts become shortcodes where their type and heading match one; others stay as callouts, which Open Publishing Space also shows.</p>
+        <p>Your own text is otherwise left as it is.</p>
       </div>
     </details>
   </div>
@@ -212,15 +211,19 @@ function saveZip(blob, fileName) {
 function showDone(response, fileName) {
   var guideCount = response.headers.get('X-Guides-Converted');
   var warningCount = Number(response.headers.get('X-Warnings'));
+  var platform = 'Docsify';
+  if (response.headers.get('X-Converted-To') === 'grav') {
+    platform = 'Grav';
+  }
   var message = 'Converted ' + guideCount + ' guide';
   if (guideCount !== '1') {
     message += 's';
   }
-  message += ' – ' + fileName + ' has been downloaded.';
+  message += ' to ' + platform + ' – ' + fileName + ' has been downloaded.';
   if (warningCount === 1) {
-    message += ' 1 link needs checking: see conversion-notes.txt in the zip.';
+    message += ' 1 thing to check: see conversion-notes.txt in the zip.';
   } else if (warningCount > 1) {
-    message += ' ' + warningCount + ' links need checking: see conversion-notes.txt in the zip.';
+    message += ' ' + warningCount + ' things to check: see conversion-notes.txt in the zip.';
   }
   doneBox.textContent = message;
   doneBox.style.display = 'block';

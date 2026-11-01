@@ -12,6 +12,8 @@ class DocsifyReader
     private string $siteUrl = '';
     // the single guide's address name, or '' for a site with a Guides page
     private string $singleGuide = '';
+    // for a site made in Docsify (no hidden notes): settings filled in with defaults, and other things to check
+    public array $notes = [];
 
     public function read(string $dir): Site
     {
@@ -25,6 +27,14 @@ class DocsifyReader
                 $note['path'] = $path;
                 $notedPages[] = $note;
             }
+        }
+
+        if (count($notedPages) === 0) {
+            // a site made in Docsify, not by this converter: its Grav structure is worked out from its layout
+            $firstReader = new DocsifyFirstReader();
+            $site = $firstReader->read($this->dir);
+            $this->notes = $firstReader->notes;
+            return $site;
         }
 
         foreach ($notedPages as $note) {

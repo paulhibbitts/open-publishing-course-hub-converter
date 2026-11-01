@@ -121,14 +121,27 @@ class DocsifyWriter
             $head[] = Callouts::quote('TIP', 'Learning Objectives', $objectives);
             $body = Callouts::tipsToNotes($body);
         }
-        $this->writePage($sectionFile, $section, $head, $body);
+        $gravPath = '/' . $guideSlug . '/' . $section->slug();
+        $this->writePage($sectionFile, $section, $head, $body, $this->sideBox($section, $gravPath, $sectionFile));
 
         foreach ($section->children as $page) {
             $pageFile = $sectionFolder . '/' . $page->slug() . '.md';
             $gravPath = '/' . $guideSlug . '/' . $section->slug() . '/' . $page->slug();
             $head = array_merge($backLink, ['# ' . $page->title()]);
-            $this->writePage($pageFile, $page, $head, $this->convert($page->body, $gravPath, $pageFile));
+            $body = $this->convert($page->body, $gravPath, $pageFile);
+            $this->writePage($pageFile, $page, $head, $body, $this->sideBox($page, $gravPath, $pageFile));
         }
+    }
+
+    // A section's or page's Side Box (shown beside its text in Grav) as a NOTE at the end of the page, as on the
+    // hand-built Read, Move, Reuse site; [] when it has none
+    private function sideBox(Page $page, string $gravPath, string $where): array
+    {
+        $sideBox = $page->setting('side_box');
+        if ($sideBox === '') {
+            return [];
+        }
+        return ["> [!NOTE]\n" . Helpers::quoteLines(trim($this->convert($sideBox, $gravPath, $where)))];
     }
 
     // Guide menu pages (Topics, Resources …) are outside the reading order: they hide the sidebar, link back to
@@ -356,9 +369,14 @@ class DocsifyWriter
         $this->writeFile('home.md', implode("\n", $lines));
     }
 
-    private function writePage(string $path, Page $page, array $head, string $body): void
+    // $foot: anything the converter adds after the page's text (such as its Side Box)
+    private function writePage(string $path, Page $page, array $head, string $body, array $foot = []): void
     {
         $lines = array_merge([Helpers::gravNote($page), ''], Helpers::generated($head), ['', trim($body)]);
+        if (count($foot) > 0) {
+            $lines[] = '';
+            $lines = array_merge($lines, Helpers::generated($foot));
+        }
         $this->writeFile($path, implode("\n", $lines));
     }
 

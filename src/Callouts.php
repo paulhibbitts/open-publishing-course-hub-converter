@@ -1,7 +1,8 @@
 <?php
 namespace OPG;
 
-// Open Publishing Space's callout shortcodes ([reflection] … [/reflection]) and Docsify's callouts (> [!TIP])
+// Open Publishing Space's callout shortcodes ([reflection] … [/reflection]) and Docsify's callouts (> [!TIP]),
+// plus the other shortcodes that need care when moving between the two
 class Callouts
 {
     // shortcode => [callout type, default heading], as in the themes' CourseContentShortcode.php
@@ -19,136 +20,223 @@ class Callouts
         'announcement'       => ['IMPORTANT', 'Announcement'],
     ];
 
-    // A callout with a bold heading, each line quoted: > [!TIP] / > **Reflection** / > text …
+    // Shortcodes that only set out the page in Grav (such as [topics], an A–Z list). Docsify doesn't need them,
+    // so their tags are kept hidden for the way back.
+    public const LAYOUT_SHORTCODES = ['topics'];
+
+    // A callout with a bold heading: > [!TIP] / > **Reflection** / > / > text …
     public static function quote(string $type, string $heading, string $text): string
     {
-        $lines = array_merge(['[!' . $type . ']', '**' . $heading . '**', ''], explode("\n", trim($text)));
-        return implode("\n", array_map(fn($line) => $line === '' ? '>' : '> ' . $line, $lines));
+        $lines = '[!' . $type . "]\n**" . $heading . "**\n\n" . trim($text);
+        return Helpers::quoteLines($lines);
     }
+
+    // ---- Grav → Docsify ----
 
     public static function toDocsify(string $markdown): string
     {
-        $names = implode('|', array_map('preg_quote', array_keys(self::SHORTCODES)));
-        // [name attributes]text[/name]. Several shortcodes share one callout type, so a hidden note keeps
-        // the shortcode (and its attributes) for the way back.
+        // [name attributes]text[/name] → a callout. Several shortcodes share one callout type, so a hidden note
+        // keeps the shortcode (and its attributes) for the way back.
+        $names = implode('|', array_keys(self::SHORTCODES));
         $markdown = preg_replace_callback(
             '/\[(' . $names . ')((?: [^\]]*)?)\]\n?(.*?)\[\/\1\]/s',
-            function ($m) {
-                [$type, $heading] = self::SHORTCODES[$m[1]];
-                if (preg_match('/type="([^"]*)"/', $m[2], $t)) {
-                    $type = strtoupper($t[1]);
-                }
-                if (preg_match('/title="([^"]*)"/', $m[2], $t)) {
-                    $heading = $t[1];
-                }
-                return '<!-- grav: [' . $m[1] . $m[2] . "] -->\n" . self::quote($type, $heading, $m[3]);
-            },
+            [self::class, 'shortcodeToCallout'],
             $markdown
         );
-        // Content only for embedded pages (in an LMS) stays in Grav: kept hidden here, restored on the way back
+
+        // Content only for embedded pages (in an LMS) stays in Grav: it's kept inside a hidden note
         $markdown = preg_replace_callback(
             '/\[showifembedded\](.*?)\[\/showifembedded\]/s',
-            fn($m) => "<!-- grav: [showifembedded]\n" . str_replace('-->', '--&gt;', $m[1]) . "\n[/showifembedded] -->",
+            [self::class, 'hideEmbeddedContent'],
             $markdown
         );
+
+        // [hideifembedded] and the layout shortcodes only wrap text: their tags become hidden notes
         $markdown = preg_replace('/\[(\/?)hideifembedded\]/', '<!-- grav: [$1hideifembedded] -->', $markdown);
-        // layout-only shortcodes (such as [topics], which sets out an A–Z list) have nothing to do in Docsify:
-        // their tags are kept hidden, for the way back
-        $layout = implode('|', self::LAYOUT_SHORTCODES);
-        $markdown = preg_replace('/\[(\/?)(' . $layout . ')\]/', '<!-- grav: [$1$2] -->', $markdown);
+        $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
+        $markdown = preg_replace('/\[(\/?)(' . $layoutNames . ')\]/', '<!-- grav: [$1$2] -->', $markdown);
         return $markdown;
     }
 
-    public const LAYOUT_SHORTCODES = ['topics'];
-
-    // Other shortcodes Docsify can't show (an embed such as [googleslides], for example), for the warnings.
-    // Code (in backticks or code blocks) and links ([text](url)) aren't shortcodes.
-    public static function unknownShortcodes(string $markdown): array
+    // $match: [whole shortcode, its name, its attributes, its text]
+    private static function shortcodeToCallout(array $match): string
     {
-        $markdown = preg_replace('/```.*?```|~~~.*?~~~|`[^`\n]*`|<!--.*?-->/s', '', $markdown);
-        preg_match_all('/\[\/?([a-z][a-z0-9-]*)(?:\s[^\]]*)?\](?![(\[:])/', $markdown, $m);
-        return array_values(array_unique($m[1]));
+        $name = $match[1];
+        $attributes = $match[2];
+        $type = self::SHORTCODES[$name][0];
+        $heading = self::SHORTCODES[$name][1];
+        // type="" and title="" attributes change the callout's type and heading
+        if (preg_match('/type="([^"]*)"/', $attributes, $found) === 1) {
+            $type = strtoupper($found[1]);
+        }
+        if (preg_match('/title="([^"]*)"/', $attributes, $found) === 1) {
+            $heading = $found[1];
+        }
+        return '<!-- grav: [' . $name . $attributes . "] -->\n" . self::quote($type, $heading, $match[3]);
     }
 
-    // In Grav, Learning Objectives are their own box, so a TIP in the text is the page's only TIP. Here the
+    private static function hideEmbeddedContent(array $match): string
+    {
+        $content = str_replace('-->', '--&gt;', $match[1]);
+        return "<!-- grav: [showifembedded]\n" . $content . "\n[/showifembedded] -->";
+    }
+
+    // In Grav, Learning Objectives are their own box, so a TIP in the text is the page's only TIP. In Docsify the
     // objectives are a TIP too, so the text's TIPs become NOTEs (no two callouts of one type on a page).
     // A TIP written as > [!TIP] gets a hidden note, so it can become a TIP again on the way back.
     public static function tipsToNotes(string $markdown): string
     {
-        $lines = explode("\n", $markdown);
-        $out = [];
-        foreach ($lines as $line) {
-            if (preg_match('/^> \[!TIP\]/', $line)) {
-                $previous = end($out);
-                if ($previous === false || !str_starts_with((string)$previous, '<!-- grav: [')) {
-                    $out[] = '<!-- grav: [!TIP] -->';
+        $result = [];
+        foreach (explode("\n", $markdown) as $line) {
+            if (str_starts_with($line, '> [!TIP]')) {
+                $previousLine = '';
+                if (count($result) > 0) {
+                    $previousLine = $result[count($result) - 1];
                 }
-                $line = preg_replace('/^> \[!TIP\]/', '> [!NOTE]', $line);
+                // a TIP from a shortcode already has its note
+                if (!str_starts_with($previousLine, '<!-- grav: [')) {
+                    $result[] = '<!-- grav: [!TIP] -->';
+                }
+                $line = '> [!NOTE]' . substr($line, strlen('> [!TIP]'));
             }
-            $out[] = $line;
+            $result[] = $line;
         }
-        return implode("\n", $out);
+        return implode("\n", $result);
     }
 
-    // Docsify → Grav. A callout with a hidden note goes back to its shortcode, exactly; a TIP that became a NOTE
-    // becomes a TIP again; content kept hidden for embedded pages comes back. A callout without a note (from a
-    // Docsify-first site) becomes a shortcode when its type and heading match one (> [!IMPORTANT] / **Example**),
-    // otherwise it stays a > [!TYPE] callout, which the Open Publishing Space themes show too.
+    // Other shortcodes Docsify can't show (an embed such as [googleslides], for example), for the warnings.
+    // Code (in backticks or code blocks), hidden notes and links ([text](url)) aren't shortcodes.
+    public static function unknownShortcodes(string $markdown): array
+    {
+        $markdown = preg_replace('/```.*?```|~~~.*?~~~|`[^`\n]*`|<!--.*?-->/s', '', $markdown);
+        preg_match_all('/\[\/?([a-z][a-z0-9-]*)(?:\s[^\]]*)?\](?![(\[:])/', $markdown, $found);
+        return array_values(array_unique($found[1]));
+    }
+
+    // ---- Docsify → Grav ----
+
+    // A callout with a hidden note goes back to its exact shortcode, and a TIP that became a NOTE becomes a TIP
+    // again. A callout without a note (from a site made in Docsify) becomes a shortcode when its type and heading
+    // match one (> [!IMPORTANT] with **Example** → [example]); otherwise it stays a > [!TYPE] callout, which the
+    // Open Publishing Space themes also show.
     public static function toGrav(string $markdown): string
     {
         $markdown = preg_replace_callback(
             '/<!-- grav: \[showifembedded\]\n(.*?)\n\[\/showifembedded\] -->/s',
-            fn($m) => '[showifembedded]' . str_replace('--&gt;', '-->', $m[1]) . '[/showifembedded]',
+            [self::class, 'showEmbeddedContent'],
             $markdown
         );
         $markdown = preg_replace('/<!-- grav: \[(\/?)hideifembedded\] -->/', '[$1hideifembedded]', $markdown);
-        $markdown = preg_replace('/<!-- grav: \[(\/?)(' . implode('|', self::LAYOUT_SHORTCODES) . ')\] -->/', '[$1$2]', $markdown);
-        $markdown = preg_replace('/<!-- grav: \[!TIP\] -->\n> \[!NOTE\]/', '> [!TIP]', $markdown);
+        $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
+        $markdown = preg_replace('/<!-- grav: \[(\/?)(' . $layoutNames . ')\] -->/', '[$1$2]', $markdown);
+        $markdown = str_replace("<!-- grav: [!TIP] -->\n> [!NOTE]", '> [!TIP]', $markdown);
 
         $lines = explode("\n", $markdown);
-        $out = [];
-        for ($i = 0; $i < count($lines); $i++) {
-            $shortcode = null;
-            if (preg_match('/^<!-- grav: \[([a-z-]+)((?: [^\]]*)?)\] -->$/', $lines[$i], $m) && isset(self::SHORTCODES[$m[1]])) {
-                $shortcode = [$m[1], $m[2]];
+        $result = [];
+        $i = 0;
+        while ($i < count($lines)) {
+            $shortcode = self::shortcodeInNote($lines[$i]);
+            if ($shortcode !== null) {
+                // the note itself isn't kept; the callout after it is read next
                 $i++;
             }
-            if ($i < count($lines) && preg_match('/^> \[!([A-Z]+)\]\s*$/', $lines[$i], $t)) {
-                // the callout's lines: > [!TYPE], > **Heading**, >, then its text
-                $quoted = [];
-                for ($j = $i + 1; $j < count($lines) && preg_match('/^>( |$)/', $lines[$j]); $j++) {
-                    $quoted[] = preg_replace('/^> ?/', '', $lines[$j]);
-                }
-                $heading = null;
-                if ($quoted && preg_match('/^\*\*(.+)\*\*$/', $quoted[0], $h)) {
-                    $heading = $h[1];
-                    array_shift($quoted);
-                    if ($quoted && $quoted[0] === '') {
-                        array_shift($quoted);
-                    }
-                }
-                if ($shortcode === null && $heading !== null) {
-                    foreach (self::SHORTCODES as $name => [$type, $default]) {
-                        if ($type === $t[1] && $default === $heading) {
-                            $shortcode = [$name, ''];
-                            break;
-                        }
-                    }
-                }
+            $calloutType = '';
+            if ($i < count($lines)) {
+                $calloutType = self::calloutType($lines[$i]);
+            }
+            if ($calloutType === '') {
                 if ($shortcode !== null) {
-                    $out[] = '[' . $shortcode[0] . $shortcode[1] . ']';
-                    $out = array_merge($out, $quoted);
-                    $out[] = '[/' . $shortcode[0] . ']';
-                    $i = $j - 1;
+                    // a note whose callout was removed in Docsify: the note is dropped, and line $i is read
+                    // again as an ordinary line
                     continue;
                 }
-            } elseif ($shortcode !== null) {
-                // a note without its callout (the callout was removed in Docsify): drop the note
-                $i--;
+                $result[] = $lines[$i];
+                $i++;
                 continue;
             }
-            $out[] = $lines[$i];
+
+            // collect the callout's quoted lines, without their '> '
+            $quoted = [];
+            $next = $i + 1;
+            while ($next < count($lines) && preg_match('/^>( |$)/', $lines[$next]) === 1) {
+                $quoted[] = preg_replace('/^> ?/', '', $lines[$next]);
+                $next++;
+            }
+            $heading = self::takeHeading($quoted);
+
+            if ($shortcode === null && $heading !== '') {
+                $shortcode = self::shortcodeFor($calloutType, $heading);
+            }
+            if ($shortcode === null) {
+                // no matching shortcode: the callout stays as it is
+                $result[] = $lines[$i];
+                $i++;
+                continue;
+            }
+            $result[] = '[' . $shortcode . ']';
+            foreach ($quoted as $line) {
+                $result[] = $line;
+            }
+            $result[] = '[/' . self::shortcodeName($shortcode) . ']';
+            $i = $next;
         }
-        return implode("\n", $out);
+        return implode("\n", $result);
+    }
+
+    private static function showEmbeddedContent(array $match): string
+    {
+        return '[showifembedded]' . str_replace('--&gt;', '-->', $match[1]) . '[/showifembedded]';
+    }
+
+    // '<!-- grav: [reflection title="Think"] -->' → 'reflection title="Think"' (or null for any other line)
+    private static function shortcodeInNote(string $line): ?string
+    {
+        if (preg_match('/^<!-- grav: \[([a-z-]+)((?: [^\]]*)?)\] -->$/', $line, $found) !== 1) {
+            return null;
+        }
+        if (!isset(self::SHORTCODES[$found[1]])) {
+            return null;
+        }
+        return $found[1] . $found[2];
+    }
+
+    // 'reflection title="Think"' → 'reflection'
+    private static function shortcodeName(string $shortcode): string
+    {
+        $parts = explode(' ', $shortcode, 2);
+        return $parts[0];
+    }
+
+    // '> [!TIP]' → 'TIP' (or '' when the line doesn't start a callout)
+    private static function calloutType(string $line): string
+    {
+        if (preg_match('/^> \[!([A-Z]+)\]\s*$/', $line, $found) !== 1) {
+            return '';
+        }
+        return $found[1];
+    }
+
+    // A callout's first line is its bold heading (and then an empty line): both are taken out of $quoted
+    private static function takeHeading(array &$quoted): string
+    {
+        if (count($quoted) === 0 || preg_match('/^\*\*(.+)\*\*$/', $quoted[0], $found) !== 1) {
+            return '';
+        }
+        array_shift($quoted);
+        if (count($quoted) > 0 && $quoted[0] === '') {
+            array_shift($quoted);
+        }
+        return $found[1];
+    }
+
+    // The shortcode whose callout type and default heading match, or null
+    private static function shortcodeFor(string $type, string $heading): ?string
+    {
+        foreach (self::SHORTCODES as $name => $calloutStyle) {
+            if ($calloutStyle[0] === $type && $calloutStyle[1] === $heading) {
+                return $name;
+            }
+        }
+        return null;
     }
 }

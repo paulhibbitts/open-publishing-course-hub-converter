@@ -8,66 +8,74 @@ use Symfony\Component\Yaml\Yaml;
 class DocsifyReader
 {
     private string $dir;
+    // the original site's address, if one was given when converting to Docsify
     private string $siteUrl = '';
     // the single guide's address name, or '' for a site with a Guides page
-    private string $single = '';
+    private string $singleGuide = '';
 
     public function read(string $dir): Site
     {
         $this->dir = rtrim($dir, '/');
-        $pages = [];
+
+        // every Docsify page that has a hidden note
+        $notedPages = [];
         foreach ($this->markdownFiles() as $path) {
             $note = Helpers::readGravNote(file_get_contents($path));
             if ($note !== null) {
-                $pages[] = [$path, $note];
+                $note['path'] = $path;
+                $notedPages[] = $note;
             }
         }
-        // the original site's address (if one was given) is kept with the home page
-        foreach ($pages as [$path, [$where]]) {
-            if (!empty($where['site'])) {
-                $this->siteUrl = $where['site'];
+
+        foreach ($notedPages as $note) {
+            // the original site's address (if one was given) is kept with the home page
+            if (isset($note['where']['site'])) {
+                $this->siteUrl = $note['where']['site'];
+            }
+            // in a single-guide site, home.md is the guide's home page
+            $isHomePage = basename($note['path']) === 'home.md';
+            if ($isHomePage && str_ends_with($note['where']['file'], 'section-list.md')) {
+                $this->singleGuide = Helpers::slugFromFolder(basename(dirname($note['where']['file'])));
             }
         }
-        // a single-guide site's home.md is its guide home
-        foreach ($pages as [$path, [$where]]) {
-            if (basename($path) === 'home.md' && str_ends_with($where['file'], 'section-list.md')) {
-                $this->single = Helpers::slugFromFolder(basename(dirname($where['file'])));
-            }
-        }
-        return $this->fromNotes($pages);
+        return $this->fromNotes($notedPages);
     }
 
     // Rebuilds the guides from the hidden notes: each note says where its page goes in Grav
-    private function fromNotes(array $notes): Site
+    private function fromNotes(array $notedPages): Site
     {
-        $site = new Site();
-        $byFolder = [];
-        foreach ($notes as [$path, [$where, $yaml, $rest]]) {
-            $file = basename($where['file']);
-            $folder = dirname($where['file']);
-            $depth = count(explode('/', $folder));
-            $kind = match (true) {
-                $file === 'reader-list.md' => 'guides',
-                $file === 'section-list.md' => 'guide',
-                $depth === 2 && !Helpers::isNumbered(basename($folder)) => 'menu',
-                $depth === 2 => 'section',
-                default => 'page',
-            };
-            $page = new Page($kind, $folder, $file);
-            $page->yaml = $yaml;
-            $page->meta = (array)(Yaml::parse($yaml) ?? []);
-            $page->body = $this->body($kind, $rest);
-            $this->updateVisibleSettings($page, $rest);
-            foreach ($where['images'] ?? [] as $image) {
+        $pagesByFolder = [];
+        foreach ($notedPages as $note) {
+            $gravFile = $note['where']['file'];
+            $page = new Page($this->kindOf($gravFile), dirname($gravFile), basename($gravFile));
+            $page->yaml = $note['yaml'];
+            $settings = Yaml::parse($note['yaml']);
+            if (is_array($settings)) {
+                $page->meta = $settings;
+            }
+            $page->body = $this->authorText($page->kind, $note['rest']);
+            $this->updateVisibleSettings($page, $note['rest']);
+
+            $images = [];
+            if (isset($note['where']['images'])) {
+                $images = $note['where']['images'];
+            }
+            foreach ($images as $image) {
                 $page->images[] = $image;
                 // images are beside the Docsify page (a page's images are in its section's folder)
-                $page->imageSources[$image] = dirname($path) . '/' . $image;
+                $page->imageSources[$image] = dirname($note['path']) . '/' . $image;
             }
-            $byFolder[$folder] = $page;
+            $pagesByFolder[$page->folder] = $page;
         }
-        ksort($byFolder, SORT_NATURAL);
-        foreach ($byFolder as $folder => $page) {
-            $parent = $byFolder[dirname($folder)] ?? null;
+
+        // folders in Grav's order, so each guide's sections and pages are added in order
+        ksort($pagesByFolder, SORT_NATURAL);
+        $site = new Site();
+        foreach ($pagesByFolder as $folder => $page) {
+            $parent = null;
+            if (isset($pagesByFolder[dirname($folder)])) {
+                $parent = $pagesByFolder[dirname($folder)];
+            }
             if ($page->kind === 'guides') {
                 $site->guidesPage = $page;
             } elseif ($page->kind === 'guide') {
@@ -81,46 +89,101 @@ class DocsifyReader
         return $site;
     }
 
-    // The author's text: everything the converter didn't add, with callouts and links back in Grav's form.
-    // A guide home's (and the Guides page's) text is split by the section cards: the part below them was below ===.
-    private function body(string $kind, string $rest): string
+    // What a page is, from its Grav file: '01.guide/section-list.md' is a guide, '01.guide/01.section/section.md'
+    // a section, '01.guide/topics/default.md' a menu page, and anything deeper a reading page
+    private function kindOf(string $gravFile): string
     {
-        $blocks = preg_split('/<!-- grav:gen -->\n.*?\n<!-- \/grav:gen -->/s', $rest);
-        $blocks = array_map('trim', $blocks);
-        if ($kind === 'guide' || $kind === 'guides') {
-            // [before the title, intro, after the cards (maybe === and more text), after the footer]
-            $text = $blocks[1] ?? '';
-            $after = $blocks[2] ?? '';
-            if (str_starts_with($after, '<!-- grav:=== -->')) {
-                $text .= "\n\n===\n\n" . trim(substr($after, strlen('<!-- grav:=== -->')));
-            }
-        } else {
-            $text = implode("\n\n", array_filter(array_slice($blocks, 1), 'strlen'));
+        $fileName = basename($gravFile);
+        $folder = dirname($gravFile);
+        $depth = count(explode('/', $folder));
+        if ($fileName === 'reader-list.md') {
+            return 'guides';
         }
-        $text = Callouts::toGrav($text);
-        return Links::toGrav($text, $this->single, $this->siteUrl);
+        if ($fileName === 'section-list.md') {
+            return 'guide';
+        }
+        if ($depth === 2 && !Helpers::isNumbered(basename($folder))) {
+            return 'menu';
+        }
+        if ($depth === 2) {
+            return 'section';
+        }
+        return 'page';
     }
 
-    // A title or subtitle changed in Docsify goes into the page's settings (the rest of the front matter is
-    // kept exactly as it was)
+    // The author's text: everything the converter didn't add, with callouts and links back in Grav's form
+    private function authorText(string $kind, string $rest): string
+    {
+        // the parts between the converter's generated blocks
+        $parts = preg_split('/<!-- grav:gen -->\n.*?\n<!-- \/grav:gen -->/s', $rest);
+        $trimmedParts = [];
+        foreach ($parts as $part) {
+            $trimmedParts[] = trim($part);
+        }
+
+        if ($kind === 'guide' || $kind === 'guides') {
+            // [before the title, the intro, after the cards, after the footer]; the text after the cards was
+            // below a line of === in Grav
+            $text = $this->partAt($trimmedParts, 1);
+            $afterCards = $this->partAt($trimmedParts, 2);
+            if (str_starts_with($afterCards, '<!-- grav:=== -->')) {
+                $belowCards = trim(substr($afterCards, strlen('<!-- grav:=== -->')));
+                $text = $text . "\n\n===\n\n" . $belowCards;
+            }
+        } else {
+            // everything after the page's title block
+            $textParts = [];
+            for ($i = 1; $i < count($trimmedParts); $i++) {
+                if ($trimmedParts[$i] !== '') {
+                    $textParts[] = $trimmedParts[$i];
+                }
+            }
+            $text = implode("\n\n", $textParts);
+        }
+
+        $text = Callouts::toGrav($text);
+        return Links::toGrav($text, $this->singleGuide, $this->siteUrl);
+    }
+
+    private function partAt(array $parts, int $index): string
+    {
+        if (isset($parts[$index])) {
+            return $parts[$index];
+        }
+        return '';
+    }
+
+    // A title or subtitle changed in Docsify goes into the page's settings; the rest of the front matter is
+    // kept exactly as it was
     private function updateVisibleSettings(Page $page, string $rest): void
     {
-        if (!preg_match('/<!-- grav:gen -->\n(.*?)\n<!-- \/grav:gen -->/s', $rest, $m)) {
+        // the first generated block holds the page's title (and a guide's subtitle)
+        if (preg_match('/<!-- grav:gen -->\n(.*?)\n<!-- \/grav:gen -->/s', $rest, $match) !== 1) {
             return;
         }
+        $titleBlock = $match[1];
         $changes = [];
-        if (preg_match('/^# (.+)$/m', $m[1], $t) && $t[1] !== (string)($page->meta['title'] ?? '')) {
-            $changes['title'] = $t[1];
+
+        if (preg_match('/^# (.+)$/m', $titleBlock, $found) === 1 && $found[1] !== $page->setting('title')) {
+            $changes['title'] = $found[1];
         }
         if ($page->kind === 'guide' || $page->kind === 'guides') {
-            $lines = array_values(array_filter(explode("\n", $m[1]), fn($l) => trim($l) !== ''));
-            $subtitle = isset($lines[1]) && !str_starts_with($lines[1], '#') ? $lines[1] : '';
-            if ($subtitle !== '' && $subtitle !== (string)($page->meta['subtitle'] ?? '')) {
-                $changes['subtitle'] = $subtitle;
+            // the subtitle is the line after the title
+            $lines = [];
+            foreach (explode("\n", $titleBlock) as $line) {
+                if (trim($line) !== '') {
+                    $lines[] = $line;
+                }
+            }
+            if (isset($lines[1]) && !str_starts_with($lines[1], '#') && $lines[1] !== $page->setting('subtitle')) {
+                $changes['subtitle'] = $lines[1];
             }
         }
-        if ($changes) {
-            $page->meta = array_merge($page->meta, $changes);
+
+        if (count($changes) > 0) {
+            foreach ($changes as $name => $value) {
+                $page->meta[$name] = $value;
+            }
             $page->yaml = rtrim(Yaml::dump($page->meta, 4, 4, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK));
         }
     }

@@ -149,13 +149,13 @@
 </div>
 
 <script>
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-const fileSelected = document.getElementById('file-selected');
-const convertBtn = document.getElementById('convert-btn');
-const errorBox = document.getElementById('error-box');
-const doneBox = document.getElementById('done-box');
-let chosenFile = null;
+var dropZone = document.getElementById('drop-zone');
+var fileInput = document.getElementById('file-input');
+var fileSelected = document.getElementById('file-selected');
+var convertButton = document.getElementById('convert-btn');
+var errorBox = document.getElementById('error-box');
+var doneBox = document.getElementById('done-box');
+var chosenFile = null;
 
 function showError(message) {
   document.getElementById('error-text').textContent = message;
@@ -163,66 +163,145 @@ function showError(message) {
   doneBox.style.display = 'none';
 }
 
+// Remembers the chosen zip (or none), and shows its name and size
 function chooseFile(file) {
   errorBox.style.display = 'none';
   doneBox.style.display = 'none';
+  chosenFile = null;
   if (file && !file.name.toLowerCase().endsWith('.zip')) {
     showError('Please choose a .zip file.');
-    file = null;
+  } else if (file) {
+    chosenFile = file;
   }
-  chosenFile = file || null;
-  fileSelected.style.display = chosenFile ? 'flex' : 'none';
-  convertBtn.disabled = !chosenFile;
+
   if (chosenFile) {
     document.getElementById('file-name').textContent = chosenFile.name;
     document.getElementById('file-size').textContent = (chosenFile.size / 1048576).toFixed(1) + ' MB';
+    fileSelected.style.display = 'flex';
+    convertButton.disabled = false;
+  } else {
+    fileSelected.style.display = 'none';
+    convertButton.disabled = true;
   }
 }
 
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
-fileInput.addEventListener('change', () => chooseFile(fileInput.files[0]));
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); chooseFile(e.dataTransfer.files[0]); });
-document.getElementById('clear-btn').addEventListener('click', () => { fileInput.value = ''; chooseFile(null); });
-
-// Send the zip, then either save the converted zip or show what went wrong
-document.getElementById('convert-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  if (!chosenFile) return;
-  const data = new FormData();
-  data.append('site', chosenFile);
-  if (document.getElementById('single').checked) data.append('single', '1');
-  data.append('site_url', document.getElementById('site-url').value.trim());
-  convertBtn.disabled = true;
-  document.getElementById('convert-spinner').classList.remove('hidden');
-  document.getElementById('convert-btn-text').textContent = 'Converting…';
-  try {
-    const response = await fetch('convert.php', { method: 'POST', body: data });
-    if (!response.ok) {
-      showError(await response.text());
-      return;
-    }
-    const blob = await response.blob();
-    const name = (response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'guides-docsify.zip';
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = name;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
-    const count = response.headers.get('X-Guides-Converted');
-    const warnings = Number(response.headers.get('X-Warnings') || 0);
-    doneBox.textContent = 'Converted ' + count + (count === '1' ? ' guide' : ' guides') + ' – ' + name + ' has been downloaded.'
-      + (warnings ? ' ' + warnings + (warnings === 1 ? ' link needs' : ' links need') + ' checking: see conversion-notes.txt in the zip.' : '');
-    doneBox.style.display = 'block';
-  } catch (err) {
-    showError('The converter couldn\'t be reached. Check your connection and try again.');
-  } finally {
-    convertBtn.disabled = false;
-    document.getElementById('convert-spinner').classList.add('hidden');
-    document.getElementById('convert-btn-text').textContent = 'Convert & Download ZIP';
+function setConverting(isConverting) {
+  convertButton.disabled = isConverting;
+  var spinner = document.getElementById('convert-spinner');
+  var buttonText = document.getElementById('convert-btn-text');
+  if (isConverting) {
+    spinner.classList.remove('hidden');
+    buttonText.textContent = 'Converting…';
+  } else {
+    spinner.classList.add('hidden');
+    buttonText.textContent = 'Convert & Download ZIP';
   }
+}
+
+// Saves the converted zip: a temporary link to the downloaded data, clicked once
+function saveZip(blob, fileName) {
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+  setTimeout(function () {
+    URL.revokeObjectURL(link.href);
+  }, 10000);
+}
+
+function showDone(response, fileName) {
+  var guideCount = response.headers.get('X-Guides-Converted');
+  var warningCount = Number(response.headers.get('X-Warnings'));
+  var message = 'Converted ' + guideCount + ' guide';
+  if (guideCount !== '1') {
+    message += 's';
+  }
+  message += ' – ' + fileName + ' has been downloaded.';
+  if (warningCount === 1) {
+    message += ' 1 link needs checking: see conversion-notes.txt in the zip.';
+  } else if (warningCount > 1) {
+    message += ' ' + warningCount + ' links need checking: see conversion-notes.txt in the zip.';
+  }
+  doneBox.textContent = message;
+  doneBox.style.display = 'block';
+}
+
+// The file name the server suggests, from its Content-Disposition header
+function downloadName(response) {
+  var header = response.headers.get('Content-Disposition');
+  var match = null;
+  if (header) {
+    match = header.match(/filename="([^"]+)"/);
+  }
+  if (match) {
+    return match[1];
+  }
+  return 'guides-docsify.zip';
+}
+
+// Choosing a file: click (or Enter / Space) to browse, or drop a file on the box
+dropZone.addEventListener('click', function () {
+  fileInput.click();
+});
+dropZone.addEventListener('keydown', function (event) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    fileInput.click();
+  }
+});
+fileInput.addEventListener('change', function () {
+  chooseFile(fileInput.files[0]);
+});
+dropZone.addEventListener('dragover', function (event) {
+  // without preventDefault the browser would open the dropped file instead
+  event.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', function () {
+  dropZone.classList.remove('dragover');
+});
+dropZone.addEventListener('drop', function (event) {
+  event.preventDefault();
+  dropZone.classList.remove('dragover');
+  chooseFile(event.dataTransfer.files[0]);
+});
+document.getElementById('clear-btn').addEventListener('click', function () {
+  fileInput.value = '';
+  chooseFile(null);
+});
+
+// Sends the zip to convert.php, then saves the converted zip or shows what went wrong
+document.getElementById('convert-form').addEventListener('submit', function (event) {
+  event.preventDefault();
+  if (!chosenFile) {
+    return;
+  }
+  var data = new FormData();
+  data.append('site', chosenFile);
+  if (document.getElementById('single').checked) {
+    data.append('single', '1');
+  }
+  data.append('site_url', document.getElementById('site-url').value.trim());
+  setConverting(true);
+
+  fetch('convert.php', { method: 'POST', body: data })
+    .then(function (response) {
+      if (!response.ok) {
+        // convert.php explains the problem in plain text
+        return response.text().then(showError);
+      }
+      var fileName = downloadName(response);
+      return response.blob().then(function (blob) {
+        saveZip(blob, fileName);
+        showDone(response, fileName);
+      });
+    })
+    .catch(function () {
+      showError('The converter couldn\'t be reached. Check your connection and try again.');
+    })
+    .then(function () {
+      setConverting(false);
+    });
 });
 </script>
 </body>

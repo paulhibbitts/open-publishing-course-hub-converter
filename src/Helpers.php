@@ -8,7 +8,7 @@ class Helpers
     // Grav orders pages with a number in front of the folder name ('01.what-is-open-education')
     public static function isNumbered(string $folderName): bool
     {
-        return (bool)preg_match('/^\d+\./', $folderName);
+        return preg_match('/^\d+\./', $folderName) === 1;
     }
 
     public static function slugFromFolder(string $folderName): string
@@ -23,44 +23,80 @@ class Helpers
 
     public static function isImage(string $fileName): bool
     {
-        return in_array(strtolower(pathinfo($fileName, PATHINFO_EXTENSION)), self::IMAGE_EXTENSIONS, true);
+        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        return in_array($extension, self::IMAGE_EXTENSIONS, true);
     }
 
     // Grav's last_updated ('04-10-2026 00:00', day first) as shown on the cards ('Oct 4, 2026')
     public static function shortDate(string $value): string
     {
-        $day = strtok(trim($value), ' ');
-        $date = \DateTime::createFromFormat('d-m-Y', (string)$day);
-        return $date ? $date->format('M j, Y') : $value;
+        $dayPart = strtok(trim($value), ' ');
+        $date = \DateTime::createFromFormat('d-m-Y', (string)$dayPart);
+        if ($date === false) {
+            return $value;
+        }
+        return $date->format('M j, Y');
     }
 
-    // The hidden note that lets a Docsify page go back to Grav unchanged. Docsify doesn't show HTML comments.
+    // The hidden note that lets a Docsify page go back to Grav unchanged (Docsify doesn't show HTML comments).
     // First line: where the page came from (and its images); then its front matter exactly as written.
     public static function gravNote(Page $page, array $extra = []): string
     {
         $where = ['file' => ltrim($page->folder . '/' . $page->file, '/')];
-        if ($page->images) {
+        if (count($page->images) > 0) {
             $where['images'] = $page->images;
         }
-        $where += $extra;
+        foreach ($extra as $name => $value) {
+            $where[$name] = $value;
+        }
+        $firstLine = json_encode($where, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // a comment ends at -->, so any --> in the front matter is written as --&gt;
         $yaml = rtrim(str_replace('-->', '--&gt;', $page->yaml));
-        return '<!-- grav: ' . json_encode($where, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n" . $yaml . "\n-->";
+        return '<!-- grav: ' . $firstLine . "\n" . $yaml . "\n-->";
+    }
+
+    // Reads a hidden note back. Returns null when the text doesn't start with one, otherwise
+    // ['where' => what the first line holds, 'yaml' => the front matter, 'rest' => the rest of the page]
+    public static function readGravNote(string $text): ?array
+    {
+        $found = preg_match('/^<!-- grav: (\{.*?\})\n(.*?)\n?-->\n?(.*)$/s', ltrim($text), $match);
+        if ($found !== 1) {
+            return null;
+        }
+        $where = json_decode($match[1], true);
+        if ($where === null) {
+            return null;
+        }
+        return [
+            'where' => $where,
+            'yaml' => str_replace('--&gt;', '-->', $match[2]),
+            'rest' => $match[3],
+        ];
     }
 
     // Marks text the converter adds for Docsify (titles, cards, back links …), so it can be told apart from
     // the author's own text on the way back
     public static function generated(array $lines): array
     {
-        return array_merge(['<!-- grav:gen -->'], $lines, ['<!-- /grav:gen -->']);
+        $marked = ['<!-- grav:gen -->'];
+        foreach ($lines as $line) {
+            $marked[] = $line;
+        }
+        $marked[] = '<!-- /grav:gen -->';
+        return $marked;
     }
 
-    // Reads a hidden note back: [what the first line holds, the front matter, the rest of the page]
-    public static function readGravNote(string $text): ?array
+    // Quotes each line for a Markdown callout or blockquote: 'text' → '> text', and an empty line → '>'
+    public static function quoteLines(string $text): string
     {
-        if (!preg_match('/^<!-- grav: (\{.*?\})\n(.*?)\n?-->\n?(.*)$/s', ltrim($text), $m)) {
-            return null;
+        $quoted = [];
+        foreach (explode("\n", $text) as $line) {
+            if ($line === '') {
+                $quoted[] = '>';
+            } else {
+                $quoted[] = '> ' . $line;
+            }
         }
-        $where = json_decode($m[1], true);
-        return $where === null ? null : [$where, str_replace('--&gt;', '-->', $m[2]), $m[3]];
+        return implode("\n", $quoted);
     }
 }

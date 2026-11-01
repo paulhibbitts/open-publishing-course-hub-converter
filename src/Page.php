@@ -5,16 +5,16 @@ namespace OPG;
 // or a guide menu page (such as Topics). Both directions read into this model and write from it.
 class Page
 {
-    public string $kind;          // 'guides', 'guide', 'section', 'page' or 'menu'
-    public string $folder;        // the page's folder, from the pages folder, e.g. '01.open-education-essentials/01.what-is-open-education'
-    public string $file;          // its Markdown file, e.g. 'section.md' (the file name is Grav's page type)
-    public string $yaml = '';     // the front matter exactly as written, so a round trip can give it back unchanged
-    public array $meta = [];      // the same front matter, parsed
-    public string $body = '';     // the Markdown below the front matter
-    public array $images = [];    // image files in the page's own folder
+    public string $kind;             // 'guides', 'guide', 'section', 'page' or 'menu'
+    public string $folder;           // the page's folder, from the pages folder, e.g. '01.open-education-essentials/01.what-is-open-education'
+    public string $file;             // its Markdown file, e.g. 'section.md' (the file name is Grav's page type)
+    public string $yaml = '';        // the front matter exactly as written, so a round trip can give it back unchanged
+    public array $meta = [];         // the same front matter, read into an array
+    public string $body = '';        // the Markdown below the front matter
+    public array $images = [];       // image files in the page's own folder
     public array $imageSources = []; // when read from Docsify: image name => where the file is now
-    public array $children = [];  // sections of a guide, or pages of a section
-    public array $menuPages = []; // a guide's unnumbered pages, such as Topics and Resources
+    public array $children = [];     // the sections of a guide, or the pages of a section
+    public array $menuPages = [];    // a guide's unnumbered pages, such as Topics and Resources
 
     public function __construct(string $kind, string $folder, string $file)
     {
@@ -31,6 +31,18 @@ class Page
 
     public function title(): string
     {
-        return (string)($this->meta['title'] ?? Helpers::titleFromSlug($this->slug()));
+        if (isset($this->meta['title'])) {
+            return (string)$this->meta['title'];
+        }
+        return Helpers::titleFromSlug($this->slug());
+    }
+
+    // A front matter setting as text, or '' when the page doesn't have it
+    public function setting(string $name): string
+    {
+        if (!isset($this->meta[$name])) {
+            return '';
+        }
+        return trim((string)$this->meta[$name]);
     }
 }

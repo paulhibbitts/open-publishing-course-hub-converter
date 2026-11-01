@@ -8,7 +8,7 @@ class GravWriter
 {
     public function write(Site $site, string $out): void
     {
-        if ($site->guidesPage) {
+        if ($site->guidesPage !== null) {
             $this->writePage($site->guidesPage, $out);
         }
         foreach ($site->guides as $guide) {
@@ -19,22 +19,24 @@ class GravWriter
                     $this->writePage($page, $out);
                 }
             }
-            foreach ($guide->menuPages as $page) {
-                $this->writePage($page, $out);
+            foreach ($guide->menuPages as $menuPage) {
+                $this->writePage($menuPage, $out);
             }
         }
     }
 
     private function writePage(Page $page, string $out): void
     {
-        $dir = $out . '/' . $page->folder;
-        @mkdir($dir, 0777, true);
+        $folder = $out . '/' . $page->folder;
+        if (!is_dir($folder)) {
+            mkdir($folder, 0777, true);
+        }
         $text = "---\n" . rtrim($page->yaml) . "\n---\n\n" . trim($page->body) . "\n";
-        file_put_contents($dir . '/' . $page->file, $text);
+        file_put_contents($folder . '/' . $page->file, $text);
+
         foreach ($page->images as $image) {
-            $source = $page->imageSources[$image] ?? null;
-            if ($source !== null && is_file($source)) {
-                copy($source, $dir . '/' . $image);
+            if (isset($page->imageSources[$image]) && is_file($page->imageSources[$image])) {
+                copy($page->imageSources[$image], $folder . '/' . $image);
             }
         }
     }

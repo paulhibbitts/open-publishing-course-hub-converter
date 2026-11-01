@@ -1,0 +1,13 @@
+{
+    "name": "hibbittsdesign/open-publishing-guides-converter",
+    "description": "Converts Open Publishing Space guides between Grav and Docsify, in either direction",
+    "require": {
+        "php": ">=8.0",
+        "symfony/yaml": "^6.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "OPG\\": "src/"
+        }
+    }
+}

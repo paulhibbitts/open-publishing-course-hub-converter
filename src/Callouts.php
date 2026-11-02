@@ -20,9 +20,9 @@ class Callouts
         'announcement'       => ['IMPORTANT', 'Announcement'],
     ];
 
-    // Shortcodes that only set out the page in Grav (such as [topics], an A–Z list). Docsify doesn't need them,
-    // so their tags are kept hidden for the way back.
-    public const LAYOUT_SHORTCODES = ['topics'];
+    // Shortcodes that only set out the page in Grav (such as [topics], an A–Z list, or [references], a list of
+    // sources). Docsify doesn't need them, so their tags are kept hidden for the way back.
+    public const LAYOUT_SHORTCODES = ['topics', 'references'];
 
     // A callout with a bold heading: > [!TIP] / > **Reflection** / > / > text …
     public static function quote(string $type, string $heading, string $text): string
@@ -50,6 +50,11 @@ class Callouts
             [self::class, 'hideEmbeddedContent'],
             $markdown
         );
+
+        // [details summary="…"]text[/details] (a section readers open, as in Pressbooks books) → HTML's own
+        // <details>, which Docsify shows as it is; the hidden note keeps the shortcode for the way back
+        $markdown = preg_replace_callback('/\[details((?: [^\]]*)?)\]/', [self::class, 'detailsToHtml'], $markdown);
+        $markdown = str_replace('[/details]', "\n</details><!-- grav: [/details] -->", $markdown);
 
         // [hideifembedded] and the layout shortcodes only wrap text: their tags become hidden notes
         $markdown = preg_replace('/\[(\/?)hideifembedded\]/', '<!-- grav: [$1hideifembedded] -->', $markdown);
@@ -80,6 +85,17 @@ class Callouts
         }
         $lines = '[!' . $type . "]\n**" . $heading . "**\n\n" . $text;
         return '<!-- grav: [' . $name . $attributes . "] -->\n" . Helpers::quoteLines($lines);
+    }
+
+    // [details summary="Text version"] → <details><summary>Text version</summary>, followed by a blank line so
+    // Docsify reads the text inside as Markdown
+    private static function detailsToHtml(array $match): string
+    {
+        $summary = 'Details';
+        if (preg_match('/summary="([^"]*)"/', $match[1], $found) === 1) {
+            $summary = $found[1];
+        }
+        return '<!-- grav: [details' . $match[1] . '] --><details><summary>' . htmlspecialchars($summary) . "</summary>\n";
     }
 
     private static function hideEmbeddedContent(array $match): string
@@ -134,6 +150,9 @@ class Callouts
             $markdown
         );
         $markdown = preg_replace('/<!-- grav: \[(\/?)hideifembedded\] -->/', '[$1hideifembedded]', $markdown);
+        // <details> made from [details] (see toDocsify) goes back to the shortcode; the summary is in the note
+        $markdown = preg_replace('/<!-- grav: \[details((?: [^\]]*)?)\] --><details><summary>[^<]*<\/summary>\n/', '[details$1]', $markdown);
+        $markdown = str_replace("\n</details><!-- grav: [/details] -->", '[/details]', $markdown);
         $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
         $markdown = preg_replace('/<!-- grav: \[(\/?)(' . $layoutNames . ')\] -->/', '[$1$2]', $markdown);
         $markdown = str_replace("<!-- grav: [!TIP] -->\n> [!NOTE]", '> [!TIP]', $markdown);

@@ -75,7 +75,8 @@ function unzipPages(string $zipFile, string $into): void
         $isFolder = str_ends_with($name, '/');
         $isUnsafe = str_contains($name, '..') || str_starts_with($name, '/');
         $isMacExtra = str_contains($name, '__MACOSX');
-        $isNeeded = str_ends_with(strtolower($name), '.md') || Helpers::isImage($name);
+        // Markdown pages, their images, and a Starter Kit's index.html (only read for the site's name)
+        $isNeeded = str_ends_with(strtolower($name), '.md') || Helpers::isImage($name) || basename($name) === 'index.html';
         if ($isFolder || $isUnsafe || $isMacExtra || !$isNeeded) {
             continue;
         }

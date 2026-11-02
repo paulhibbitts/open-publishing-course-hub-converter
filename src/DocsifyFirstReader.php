@@ -754,6 +754,37 @@ class DocsifyFirstReader
         return $file;
     }
 
+    // Docsify-This shows a list of 3 or more images, and nothing else, as an image grid. Grav has no grid, so the
+    // list would show bullets in front of each image: the images become their own lines instead.
+    private function imageGridsToImages(string $markdown): string
+    {
+        $lines = explode("\n", $markdown);
+        $result = [];
+        $i = 0;
+        while ($i < count($lines)) {
+            // the list's lines: * ![alt](image) or - ![alt](image), one image each
+            $images = [];
+            $next = $i;
+            while ($next < count($lines) && preg_match('/^[*-] (!\[[^\]]*\]\([^)]*\))\s*$/', $lines[$next], $found) === 1) {
+                $images[] = $found[1];
+                $next++;
+            }
+            if (count($images) < 3) {
+                $result[] = $lines[$i];
+                $i++;
+                continue;
+            }
+            foreach ($images as $number => $image) {
+                if ($number > 0) {
+                    $result[] = '';
+                }
+                $result[] = $image;
+            }
+            $i = $next;
+        }
+        return implode("\n", $result);
+    }
+
     // Splits lines into <div class="card"> … </div> blocks
     private function cardBlocks(array $lines): array
     {
@@ -816,6 +847,7 @@ class DocsifyFirstReader
         $codeParts = [];
         $markdown = Helpers::hideCode($markdown, $codeParts);
         $markdown = Callouts::toGrav($markdown);
+        $markdown = $this->imageGridsToImages($markdown);
         $markdown = Links::imageOptionsToGrav($markdown);
         // links to pages whose Grav address is known (from the sidebars); any others are worked out from their path
         $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/', [$this, 'linkToGravAddress'], $markdown);

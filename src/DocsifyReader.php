@@ -187,15 +187,25 @@ class DocsifyReader
             $changes['title'] = $found[1];
         }
         if ($page->kind === 'guide' || $page->kind === 'guides') {
-            // the subtitle is the line after the title
+            // the subtitle is the line after the title (a cover image may come before the title)
             $lines = [];
             foreach (explode("\n", $titleBlock) as $line) {
                 if (trim($line) !== '') {
                     $lines[] = $line;
                 }
             }
-            if (isset($lines[1]) && !str_starts_with($lines[1], '#') && $lines[1] !== $page->setting('subtitle')) {
-                $changes['subtitle'] = $lines[1];
+            $titleAt = 0;
+            while ($titleAt < count($lines) && !str_starts_with($lines[$titleAt], '# ')) {
+                $titleAt++;
+            }
+            $subtitle = '';
+            if (isset($lines[$titleAt + 1]) && preg_match('/^[#<\[!]/', $lines[$titleAt + 1]) !== 1) {
+                $subtitle = $lines[$titleAt + 1];
+            }
+            // in a small cover, a guide without a subtitle has its author(s) after the title
+            $isAuthors = $page->setting('subtitle') === '' && $subtitle === $page->setting('authors');
+            if ($subtitle !== '' && !$isAuthors && $subtitle !== $page->setting('subtitle')) {
+                $changes['subtitle'] = $subtitle;
             }
         }
 

@@ -218,6 +218,11 @@ class DocsifyFirstReader
         }
 
         $guide->meta = $this->guideSettings($home, $card, $label);
+        if (isset($home['cover']['file'])) {
+            // a small cover on the guide home, beside the home page
+            $card['cover_image'] = basename($home['cover']['file']);
+            $card['cover_source'] = $this->dir . '/' . $this->folderOf($homeFile) . $home['cover']['file'];
+        }
         $this->addCoverImage($guide, $card);
         $guide->yaml = $this->yaml($guide->meta);
         $guide->menuPages = $this->readMenuPages($base, $guideFolder, $sidebar);
@@ -236,7 +241,15 @@ class DocsifyFirstReader
         if ($subtitle !== '') {
             $settings['subtitle'] = $subtitle;
         }
-        if (isset($card['cover_image'])) {
+        if (isset($home['cover']['file'])) {
+            // a small cover on the guide home itself
+            $settings['cover_image'] = basename($home['cover']['file']);
+            $settings['cover_image_layout'] = 'small';
+            // without alt text, Grav says "<title> cover", as the converter writes it
+            if ($home['cover']['alt'] !== '' && $home['cover']['alt'] !== $home['title'] . ' cover') {
+                $settings['cover_image_alt'] = $home['cover']['alt'];
+            }
+        } elseif (isset($card['cover_image'])) {
             $settings['cover_image'] = $card['cover_image'];
             $settings['cover_image_layout'] = 'small';
             // the card uses the guide's title when there's no alt text, so only a different one is kept
@@ -260,6 +273,10 @@ class DocsifyFirstReader
         $settings['prev_next_position'] = 'both';
         $settings['cards_per_row'] = '3';
         $license = $this->licenseIn($home['attribution_text']);
+        if ($license === null) {
+            // the licence pill in a small cover
+            $license = $home['license'];
+        }
         if ($license !== null) {
             $settings['show_oer_attribution'] = true;
             $settings['license'] = $license['name'];
@@ -453,14 +470,22 @@ class DocsifyFirstReader
     }
 
     // A guide home: # Title, subtitle, intro, Start Reading, the section cards, more text, the Side Box (the last
-    // callout), the authors line and the attribution
+    // callout), the authors line and the attribution. A small cover (<div class="guide-cover">) may take the place
+    // of the title and subtitle, with the authors line, licence and Start Reading inside it.
     private function parseGuideHome(string $text): array
     {
         $lines = explode("\n", $this->withoutHideSidebar($text));
         $home = ['title' => '', 'subtitle' => '', 'authors' => '', 'edition' => '', 'last_updated' => '',
-            'attribution_text' => '', 'side_box' => '', 'cards' => [], 'text' => ''];
+            'attribution_text' => '', 'side_box' => '', 'cards' => [], 'text' => '', 'cover' => [], 'license' => null];
 
-        $i = $this->readTitleAndSubtitle($lines, $home);
+        $i = $this->skipBlankLines($lines, 0);
+        if (isset($lines[$i]) && trim($lines[$i]) === '<div class="guide-cover">') {
+            $coverEnd = $this->closingDiv($lines, $i);
+            $this->readGuideCover(array_slice($lines, $i + 1, $coverEnd - $i - 1), $home);
+            $i = $this->skipBlankLines($lines, $coverEnd + 1);
+        } else {
+            $i = $this->readTitleAndSubtitle($lines, $home);
+        }
         $cardsStart = $this->findLine($lines, '/^<div class="card-list/', $i);
         $startReading = $this->findLine($lines, '/^\[Start Reading\]/', $i);
         $introEnd = $cardsStart;
@@ -489,6 +514,40 @@ class DocsifyFirstReader
             $home['text'] = $intro . "\n\n===\n\n" . $below;
         }
         return $home;
+    }
+
+    // A small cover: the cover image, then # Title, subtitle, author(s), <small>edition · Updated date</small>,
+    // the licence ([CC BY 4.0](address ":class=navpill")) and Start Reading
+    private function readGuideCover(array $lines, array &$home): void
+    {
+        $afterTitle = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line === '<div>' || $line === '</div>' || str_starts_with($line, '[Start Reading]')) {
+                continue;
+            }
+            if (preg_match('/^!\[([^\]]*)\]\(([^)\s"]+)[^)]*\)$/', $line, $found) === 1 && $home['title'] === '') {
+                $home['cover'] = ['alt' => $found[1], 'file' => $found[2]];
+            } elseif (str_starts_with($line, '# ')) {
+                $home['title'] = trim(substr($line, 2));
+            } elseif (preg_match('/^<small>(.*?)(?: · Updated (.+))?<\/small>$/u', $line, $found) === 1) {
+                $home['edition'] = $found[1];
+                if (isset($found[2])) {
+                    $home['last_updated'] = $this->gravDate($found[2]);
+                }
+            } elseif (preg_match('/^\[([^\]]+)\]\((\S+) ":class=navpill"\)$/', $line, $found) === 1) {
+                $home['license'] = ['name' => $found[1], 'url' => $found[2]];
+            } elseif ($home['title'] !== '') {
+                $afterTitle[] = $line;
+            }
+        }
+        // the lines after the title: the subtitle, then the author(s); a single line is the subtitle
+        if (isset($afterTitle[0])) {
+            $home['subtitle'] = $afterTitle[0];
+        }
+        if (isset($afterTitle[1])) {
+            $home['authors'] = $afterTitle[1];
+        }
     }
 
     // Reads '# Title' and the one-line subtitle after it into $page; returns where the next part starts

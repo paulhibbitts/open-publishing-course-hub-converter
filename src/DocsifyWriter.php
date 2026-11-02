@@ -74,8 +74,10 @@ class DocsifyWriter
         $backLink = [];
         if (!$this->single) {
             $backLink = ['[← ' . $guide->title() . '](' . $homeFile . ')', ''];
-            // (a single guide's own folder only holds its cover, which only the Guides page shows)
             $this->copyImages($guide, $guideSlug);
+        } else {
+            // a single guide's own folder only holds its cover, shown on its home page (home.md, at the top)
+            $this->copyImages($guide, '');
         }
 
         $sections = [];
@@ -205,16 +207,29 @@ class DocsifyWriter
         if ($this->single && $this->siteUrl !== '') {
             $noteExtra = ['site' => $this->siteUrl];
         }
+        $startReading = '[Start Reading](' . $firstPage . ' ":class=button :class=primary")';
+        // with a small cover (Grav's default), the cover, details and Start Reading go at the top, as in Grav
+        $smallCover = $guide->setting('cover_image') !== '' && $guide->setting('cover_image_layout') !== 'large';
+
         $lines = [Helpers::gravNote($guide, $noteExtra), ''];
-        $lines = array_merge($lines, Helpers::generated(['# ' . $guide->title(), '', $guide->setting('subtitle')]), ['']);
+        if ($smallCover) {
+            $lines = array_merge($lines, Helpers::generated($this->guideCover($guide, $startReading)), ['']);
+        } else {
+            $head = ['# ' . $guide->title(), '', $guide->setting('subtitle')];
+            if ($guide->setting('cover_image') !== '') {
+                // a large cover goes across the page, above the title
+                $head = array_merge([$this->coverImage($guide), ''], $head);
+            }
+            $lines = array_merge($lines, Helpers::generated($head), ['']);
+        }
         $lines[] = trim($this->convert($textParts['above'], $gravPath, $homeFile));
         $lines[] = '';
 
-        $startAndCards = array_merge(
-            ['[Start Reading](' . $firstPage . ' ":class=button :class=primary")', '', '<div class="card-list-sections">', ''],
-            $cards,
-            ['</div>']
-        );
+        $startAndCards = ['<div class="card-list-sections">', ''];
+        if (!$smallCover) {
+            $startAndCards = array_merge([$startReading, ''], $startAndCards);
+        }
+        $startAndCards = array_merge($startAndCards, $cards, ['</div>']);
         $lines = array_merge($lines, Helpers::generated($startAndCards), ['']);
 
         if (trim($textParts['below']) !== '') {
@@ -224,8 +239,47 @@ class DocsifyWriter
             $lines[] = trim($this->convert($textParts['below'], $gravPath, $homeFile));
             $lines[] = '';
         }
-        $lines = array_merge($lines, Helpers::generated($this->guideHomeFooter($guide, $gravPath, $homeFile)));
+        $lines = array_merge($lines, Helpers::generated($this->guideHomeFooter($guide, $gravPath, $homeFile, !$smallCover)));
         $this->writeFile($homeFile, implode("\n", $lines));
+    }
+
+    // A small cover with the guide's details beside it (the guide-cover class in Docsify-This and the Starter Kits):
+    // the cover, then the title, subtitle, author(s), edition, licence and Start Reading
+    private function guideCover(Page $guide, string $startReading): array
+    {
+        $details = ['# ' . $guide->title(), ''];
+        foreach ([$guide->setting('subtitle'), $guide->setting('authors')] as $line) {
+            if ($line !== '') {
+                $details[] = $line;
+                $details[] = '';
+            }
+        }
+        $edition = $guide->setting('edition') . $this->updated($guide);
+        if ($edition !== '') {
+            $details[] = '<small>' . ltrim($edition, ' ·') . '</small>';
+            $details[] = '';
+        }
+        // the licence as a pill, linked to the licence when there's an address
+        $license = $guide->setting('license');
+        if ($license !== '' && $guide->setting('license_url') !== '') {
+            $details[] = '[' . $license . '](' . $guide->setting('license_url') . ' ":class=navpill")';
+            $details[] = '';
+        } elseif ($license !== '') {
+            $details[] = '<span class="navpill">' . $license . '</span>';
+            $details[] = '';
+        }
+        $details[] = $startReading;
+        return array_merge(['<div class="guide-cover">', '', $this->coverImage($guide), '', '<div>', ''], $details, ['', '</div>', '', '</div>']);
+    }
+
+    // The cover image, from the guide's own folder (beside its home page). Without alt text, "<title> cover", as in Grav.
+    private function coverImage(Page $guide): string
+    {
+        $alt = $guide->setting('cover_image_alt');
+        if ($alt === '') {
+            $alt = $guide->title() . ' cover';
+        }
+        return '![' . $alt . '](' . $guide->setting('cover_image') . ' ":no-zoom")';
     }
 
     // A section's card on the guide home: image, label and number, title, description
@@ -252,8 +306,8 @@ class DocsifyWriter
         return $card;
     }
 
-    // The Side Box, the authors line and the attribution, then the line that hides the sidebar
-    private function guideHomeFooter(Page $guide, string $gravPath, string $homeFile): array
+    // The Side Box, the authors line (unless it's already in the cover) and the attribution, then the line that hides the sidebar
+    private function guideHomeFooter(Page $guide, string $gravPath, string $homeFile, bool $authorsLine): array
     {
         $footer = [];
         $sideBox = $guide->setting('side_box');
@@ -262,13 +316,15 @@ class DocsifyWriter
             $footer[] = "> [!TIP]\n" . Helpers::quoteLines(trim($this->convert($sideBox, $gravPath, $homeFile)));
             $footer[] = '';
         }
-        $footer[] = $guide->setting('authors') . ' · ' . $guide->setting('edition') . $this->updated($guide);
+        if ($authorsLine) {
+            $footer[] = $guide->setting('authors') . ' · ' . $guide->setting('edition') . $this->updated($guide);
+            $footer[] = '';
+        }
         $attribution = $guide->setting('attribution_text');
         if ($attribution !== '') {
-            $footer[] = '';
             $footer[] = $attribution;
+            $footer[] = '';
         }
-        $footer[] = '';
         $footer[] = '<!-- Hides the sidebar on this page -->';
         $footer[] = self::HIDE_SIDEBAR;
         return $footer;

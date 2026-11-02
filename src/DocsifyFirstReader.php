@@ -700,7 +700,6 @@ class DocsifyFirstReader
         return $withFiles;
     }
 
-    // Splits lines into <div class="card"> … </div> blocks
     // A sidebar link's Docsify file: 'module-01' and 'module-01.md' → 'module-01.md', 'intro/' → 'intro/README.md'.
     // '' for links to other sites (https://…, //…, mailto:…) and links within the page (#…).
     private function sidebarFile(string $target): string
@@ -726,6 +725,7 @@ class DocsifyFirstReader
         return $file;
     }
 
+    // Splits lines into <div class="card"> … </div> blocks
     private function cardBlocks(array $lines): array
     {
         $blocks = [];

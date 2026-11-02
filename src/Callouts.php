@@ -72,7 +72,14 @@ class Callouts
         if (preg_match('/title="([^"]*)"/', $attributes, $found) === 1) {
             $heading = $found[1];
         }
-        return '<!-- grav: [' . $name . $attributes . "] -->\n" . self::quote($type, $heading, $match[3]);
+        // blank lines at the start or end of the text are kept, so the way back gives the same Grav page;
+        // only the line break just before [/name] goes
+        $text = $match[3];
+        if (str_ends_with($text, "\n")) {
+            $text = substr($text, 0, -1);
+        }
+        $lines = '[!' . $type . "]\n**" . $heading . "**\n\n" . $text;
+        return '<!-- grav: [' . $name . $attributes . "] -->\n" . Helpers::quoteLines($lines);
     }
 
     private static function hideEmbeddedContent(array $match): string

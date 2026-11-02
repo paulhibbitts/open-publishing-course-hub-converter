@@ -11,8 +11,9 @@ class Links
     // $single: a single-guide site, whose sections are top-level folders and whose guide home is home.md
     public static function toDocsify(string $markdown, array $guideSlugs, bool $single): string
     {
-        // ](/path) or ](/path#heading), maybe followed by an option such as ':target=_blank'
-        $pattern = '/\]\((\/[^)\s#?]*)(#[^)\s?]*)?( \'[^\']*\')?\)/';
+        // ](/path) or ](/path#heading), maybe followed by a "title" or an option such as ':target=_blank'
+        // (not //example.org, an address without https:)
+        $pattern = '/\]\((\/(?!\/)[^)\s#?]*)(#[^)\s?]*)?( "[^"]*"| \'[^\']*\')?\)/';
         return preg_replace_callback($pattern, function ($match) use ($guideSlugs, $single) {
             $anchor = '';
             if (isset($match[2])) {
@@ -74,9 +75,9 @@ class Links
     public static function gravOnly(string $markdown, string $pagePath, string $siteUrl, string $where, array &$warnings): string
     {
         $siteUrl = rtrim($siteUrl, '/');
-        // [text](/path…), [text](../path…) and [text](./path…), images included, maybe followed by an option
-        // such as ':target=_blank'
-        $pattern = '/(!?)\[([^\]]*)\]\(((?:\/|\.\.?\/)[^)\s]*)( \'[^\']*\')?\)/';
+        // [text](/path…), [text](../path…) and [text](./path…), images included, maybe followed by a "title" or an
+        // option such as ':target=_blank' (not //example.org, an address without https:)
+        $pattern = '/(!?)\[([^\]]*)\]\(((?:\/(?!\/)|\.\.?\/)[^)\s]*)( "[^"]*"| \'[^\']*\')?\)/';
         return preg_replace_callback($pattern, function ($match) use ($pagePath, $siteUrl, $where, &$warnings) {
             $url = $match[3];
             $option = '';
@@ -128,9 +129,9 @@ class Links
     // form (/about). $singleGuide: the single guide's address name, or '' for a site with a Guides page.
     public static function toGrav(string $markdown, string $singleGuide, string $siteUrl): string
     {
-        // ](some/file.md) or ](some/file.md?id=heading) – a relative link to a Docsify page – maybe followed by an
-        // option such as ':target=_blank' (see newTabToGrav)
-        $pattern = '/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( [\'"][^\'"]*[\'"])?\)/';
+        // ](some/file.md) or ](some/file.md?id=heading) – a relative link to a Docsify page – maybe followed by a
+        // "title" or an option such as ':target=_blank' (see newTabToGrav)
+        $pattern = '/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/';
         $markdown = preg_replace_callback($pattern, function ($match) use ($singleGuide) {
             $anchor = '';
             if (isset($match[2]) && $match[2] !== '') {
@@ -185,11 +186,12 @@ class Links
         return preg_replace('/\]\(([^)\s#]+)(#[^)\s]*)? [\'"]:target=_blank[\'"]\)/', '](\1?target=_blank\2)', $markdown);
     }
 
-    // Docsify's image options → Grav's: ![alt](photo.jpg ':no-zoom :class=banner-image') → ![alt](photo.jpg?classes=banner-image).
+    // Docsify's image and link options → Grav's: ![alt](photo.jpg ':no-zoom :class=banner-image') → ![alt](photo.jpg?classes=banner-image),
+    // [Quiz](https://example.org ':class=button') → [Quiz](https://example.org?classes=button).
     // Grav has nothing like :no-zoom, so it's dropped.
     public static function imageOptionsToGrav(string $markdown): string
     {
-        $pattern = '/(!\[[^\]]*\]\()([^)\s]+) ([\'"])([^\'")]*:(?:no-zoom|class=)[^\'")]*)\3\)/';
+        $pattern = '/(!?\[[^\]]*\]\()([^)\s]+) ([\'"])([^\'")]*:(?:no-zoom|class=)[^\'")]*)\3\)/';
         return preg_replace_callback($pattern, function ($match) {
             $classes = [];
             foreach (preg_split('/\s+/', trim($match[4])) as $option) {
@@ -199,7 +201,12 @@ class Links
             }
             $source = $match[2];
             if (count($classes) > 0) {
-                $source .= '?classes=' . implode(',', $classes);
+                // add to the address's ?query if it already has one
+                $separator = '?';
+                if (str_contains($source, '?')) {
+                    $separator = '&';
+                }
+                $source .= $separator . 'classes=' . implode(',', $classes);
             }
             return $match[1] . $source . ')';
         }, $markdown);

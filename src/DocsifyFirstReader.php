@@ -729,17 +729,20 @@ class DocsifyFirstReader
     // Docsify Markdown → Grav Markdown: callouts back to shortcodes where they match, links in Grav's form
     private function toGravText(string $markdown): string
     {
+        $codeParts = [];
+        $markdown = Helpers::hideCode($markdown, $codeParts);
         $markdown = Callouts::toGrav($markdown);
         $markdown = Links::imageOptionsToGrav($markdown);
         // links to pages whose Grav address is known (from the sidebars); any others are worked out from their path
-        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( [\'"][^\'"]*[\'"])?\)/', [$this, 'linkToGravAddress'], $markdown);
+        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/', [$this, 'linkToGravAddress'], $markdown);
         $singleGuide = '';
         if ($this->single) {
             $singleGuide = $this->singleGuideSlug;
         }
         $markdown = Links::toGrav($markdown, $singleGuide, '');
         // last, as it needs each link's final address
-        return Links::newTabToGrav($markdown);
+        $markdown = Links::newTabToGrav($markdown);
+        return Helpers::showCode($markdown, $codeParts);
     }
 
     // $match: [whole link end, the Docsify file, ?id=heading, an option such as ':target=_blank']

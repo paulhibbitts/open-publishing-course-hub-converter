@@ -389,13 +389,16 @@ class DocsifyWriter
     // $gravPath: the page's address on the Grav site; $where: the Docsify file, for warnings
     private function convert(string $markdown, string $gravPath, string $where): string
     {
+        $codeParts = [];
+        $markdown = Helpers::hideCode($markdown, $codeParts);
         $markdown = Callouts::toDocsify($markdown);
         $markdown = Links::newTabToDocsify($markdown);
         $markdown = Links::toDocsify($markdown, $this->guideSlugs, $this->single);
         foreach (Callouts::unknownShortcodes($markdown) as $name) {
             $this->warnings[] = $where . ': the [' . $name . '] shortcode only works in Grav (left as it is)';
         }
-        return Links::gravOnly($markdown, $gravPath, $this->siteUrl, $where, $this->warnings);
+        $markdown = Links::gravOnly($markdown, $gravPath, $this->siteUrl, $where, $this->warnings);
+        return Helpers::showCode($markdown, $codeParts);
     }
 
     // A guide home's text is split by a line of === : the intro above the section cards, the rest below them

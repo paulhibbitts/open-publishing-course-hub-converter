@@ -156,9 +156,12 @@ class DocsifyReader
             $text = implode("\n\n", $textParts);
         }
 
+        $codeParts = [];
+        $text = Helpers::hideCode($text, $codeParts);
         $text = Callouts::toGrav($text);
         $text = Links::toGrav($text, $this->singleGuide, $this->siteUrl);
-        return Links::newTabToGrav($text);
+        $text = Links::newTabToGrav($text);
+        return Helpers::showCode($text, $codeParts);
     }
 
     private function partAt(array $parts, int $index): string

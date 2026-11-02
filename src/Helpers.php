@@ -133,4 +133,35 @@ class Helpers
         }
         return implode("\n", $quoted);
     }
+
+    // Code is shown as it is, so shortcodes and links inside it (such as `[example]…[/example]`) must not be
+    // converted: code blocks and `code` are swapped for placeholders, and put back by showCode() afterwards
+    public static function hideCode(string $markdown, array &$codeParts): string
+    {
+        // a fenced block (``` or ~~~ to the same fence), or `code` on one line
+        $pattern = '/^(```|~~~).*?^\1|`[^`\n]+`/ms';
+        return preg_replace_callback($pattern, function ($match) use (&$codeParts) {
+            // one placeholder per line, so a code block inside a callout still gets '> ' on every line
+            $placeholders = [];
+            foreach (explode("\n", $match[0]) as $line) {
+                if ($line === '') {
+                    $placeholders[] = '';
+                    continue;
+                }
+                $codeParts[] = $line;
+                $placeholders[] = self::CODE_MARK . (count($codeParts) - 1) . self::CODE_MARK;
+            }
+            return implode("\n", $placeholders);
+        }, $markdown);
+    }
+
+    public static function showCode(string $markdown, array $codeParts): string
+    {
+        return preg_replace_callback('/' . self::CODE_MARK . '(\d+)' . self::CODE_MARK . '/u', function ($match) use ($codeParts) {
+            return $codeParts[(int)$match[1]];
+        }, $markdown);
+    }
+
+    // a character that never appears in written text (Unicode private use), to mark the placeholders
+    private const CODE_MARK = "\u{E000}";
 }

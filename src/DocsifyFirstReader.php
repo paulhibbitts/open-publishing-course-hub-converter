@@ -17,12 +17,16 @@ class DocsifyFirstReader
     public array $notes = [];
     // every Docsify file read, to find the pages that weren't converted
     private array $filesRead = [];
+    // each Docsify page's address in Grav ('topic-three-subtopic-one.md' => '/guide/topic-three-overview/topic-three-subtopic-one'),
+    // worked out from the sidebars first, so links reach a page wherever it ends up
+    private array $gravAddresses = [];
 
     public function read(string $dir): Site
     {
         $this->dir = rtrim($dir, '/');
         $this->notes = [];
         $this->filesRead = [];
+        $this->gravAddresses = [];
         $site = new Site();
 
         $guideFolders = $this->guideFolders();
@@ -31,11 +35,17 @@ class DocsifyFirstReader
             $this->single = true;
             $home = $this->parseGuideHome($this->readFile('home.md'));
             $this->singleGuideSlug = Helpers::slugify($home['title']);
+            $this->mapAddresses('', $this->singleGuideSlug);
             $site->guides[] = $this->readGuide('', $this->singleGuideSlug, 1, []);
             $this->noteUnconvertedPages();
             return $site;
         }
 
+        // every guide's addresses first, so links between guides work too
+        $this->gravAddresses['home.md'] = '/';
+        foreach ($guideFolders as $folder) {
+            $this->mapAddresses($folder . '/', $folder);
+        }
         $guidesPage = $this->parseGuidesPage($this->readFile('home.md'));
         $site->guidesPage = $this->guidesPageToGrav($guidesPage);
         $number = 0;
@@ -72,6 +82,42 @@ class DocsifyFirstReader
     }
 
     // ---- the guides ----
+
+    // Each Docsify page's Grav address, from the guide's sidebar (sections and their pages) and navbar (menu pages)
+    private function mapAddresses(string $base, string $guideSlug): void
+    {
+        $homeFile = $base . 'README.md';
+        if ($this->single) {
+            $homeFile = 'home.md';
+        }
+        $guideAddress = '/' . $guideSlug;
+        $this->gravAddresses[$homeFile] = $guideAddress;
+
+        $sidebarText = '';
+        if (is_file($this->dir . '/' . $base . '_sidebar.md')) {
+            $sidebarText = file_get_contents($this->dir . '/' . $base . '_sidebar.md');
+        }
+        foreach ($this->parseSidebar($sidebarText) as $entry) {
+            $sectionAddress = $guideAddress . '/' . $this->sectionSlug($entry);
+            $this->gravAddresses[$entry['file']] = $sectionAddress;
+            foreach ($entry['pages'] as $pageEntry) {
+                $this->gravAddresses[$pageEntry['file']] = $sectionAddress . '/' . $this->slugFromDocsifyFile($pageEntry['file']);
+            }
+        }
+
+        // menu pages: the navbar's other links to the guide's own pages
+        $navbarFile = $base . '_navbar.md';
+        if (!is_file($this->dir . '/' . $navbarFile)) {
+            return;
+        }
+        foreach ($this->links(file_get_contents($this->dir . '/' . $navbarFile)) as $link) {
+            $file = $link['target'];
+            $isGuidePage = $base === '' || str_starts_with($file, $base);
+            if ($isGuidePage && !isset($this->gravAddresses[$file])) {
+                $this->gravAddresses[$file] = $guideAddress . '/' . $this->slugFromDocsifyFile($file);
+            }
+        }
+    }
 
     // Folders with their own _sidebar.md are guides
     private function guideFolders(): array
@@ -115,6 +161,8 @@ class DocsifyFirstReader
         $guideFolder = sprintf('%02d', $number) . '.' . $slug;
         $guide = new Page('guide', $guideFolder, 'section-list.md');
         $guide->body = $this->toGravText($home['text']);
+        // images shown on the guide home itself go in the guide's folder
+        $this->addImages($guide, $home['text'], $homeFile);
 
         $sidebar = $this->parseSidebar($this->readFile($base . '_sidebar.md'));
         $label = '';
@@ -230,10 +278,14 @@ class DocsifyFirstReader
     // $entry: the section in the sidebar ['title', 'file', 'pages']; $card: its card on the guide home
     private function readSection(string $guideFolder, int $number, array $entry, array $card, string $homeFile): Page
     {
-        $sectionSlug = $this->slugFromDocsifyFile($entry['file']);
+        $sectionSlug = $this->sectionSlug($entry);
         $sectionFolder = $guideFolder . '/' . sprintf('%02d', $number) . '.' . $sectionSlug;
         $section = new Page('section', $sectionFolder, 'section.md');
         $parsed = $this->parsePage($this->readFile($entry['file']), $entry['title']);
+        if ($entry['group']) {
+            // a sidebar group's name is the section's title (its first page may be called Overview)
+            $parsed['title'] = $entry['title'];
+        }
         $section->body = $this->toGravText($parsed['body']);
         $this->addImages($section, $parsed['body'], $entry['file']);
 
@@ -586,19 +638,21 @@ class DocsifyFirstReader
     // ---- small helpers ----
 
     // The sidebar's reading order: '- [Title](file.md)' is a section on its own; '- Title' starts a group whose
-    // first link (Overview) is the section's page and whose other links are its pages
+    // first link (Overview) is the section's page and whose other links are its pages. A link may also have a
+    // tooltip title: [Overview](file.md "Overview Chapter 3").
     private function parseSidebar(string $text): array
     {
         $sections = [];
         $group = null;
         foreach (explode("\n", $text) as $line) {
-            if (preg_match('/^- \[([^\]]+)\]\(([^)\s]+)\)/', $line, $found) === 1) {
-                $sections[] = ['title' => $found[1], 'file' => $found[2], 'pages' => []];
+            if (preg_match('/^- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
+                $sections[] = ['title' => $found[1], 'file' => $found[2], 'pages' => [], 'group' => false];
                 $group = null;
             } elseif (preg_match('/^- (.+)$/', $line, $found) === 1) {
+                // a group: its name is the section's title
                 $group = count($sections);
-                $sections[] = ['title' => trim($found[1]), 'file' => '', 'pages' => []];
-            } elseif ($group !== null && preg_match('/^\s+- \[([^\]]+)\]\(([^)\s]+)\)/', $line, $found) === 1) {
+                $sections[] = ['title' => trim($found[1]), 'file' => '', 'pages' => [], 'group' => true];
+            } elseif ($group !== null && preg_match('/^\s+- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
                 if ($sections[$group]['file'] === '') {
                     $sections[$group]['file'] = $found[2];
                 } else {
@@ -676,11 +730,26 @@ class DocsifyFirstReader
     private function toGravText(string $markdown): string
     {
         $markdown = Callouts::toGrav($markdown);
+        // links to pages whose Grav address is known (from the sidebars); any others are worked out from their path
+        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?\)/', [$this, 'linkToGravAddress'], $markdown);
         $singleGuide = '';
         if ($this->single) {
             $singleGuide = $this->singleGuideSlug;
         }
         return Links::toGrav($markdown, $singleGuide, '');
+    }
+
+    // $match: [whole link end, the Docsify file, ?id=heading]
+    private function linkToGravAddress(array $match): string
+    {
+        if (!isset($this->gravAddresses[$match[1]])) {
+            return $match[0];
+        }
+        $anchor = '';
+        if (isset($match[2]) && $match[2] !== '') {
+            $anchor = '#' . substr($match[2], strlen('?id='));
+        }
+        return '](' . $this->gravAddresses[$match[1]] . $anchor . ')';
     }
 
     // Links in a navbar or text: [['text' => …, 'target' => …], …]
@@ -706,6 +775,16 @@ class DocsifyFirstReader
     private function docsifyFile(string $route): string
     {
         return $route . '.md';
+    }
+
+    // A section's folder name: its own folder's name ('guide/section/README.md' → 'section'), or for a group of
+    // flat files, the group's name ('Topic Three' → 'topic-three'), or the file's name
+    private function sectionSlug(array $entry): string
+    {
+        if (basename($entry['file']) === 'README.md' || !$entry['group']) {
+            return $this->slugFromDocsifyFile($entry['file']);
+        }
+        return Helpers::slugify($entry['title']);
     }
 
     // 'guide/section/README.md' → 'section'; 'guide/section/page.md' → 'page'

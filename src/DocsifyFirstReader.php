@@ -34,6 +34,9 @@ class DocsifyFirstReader
             // no guide folders, but a sidebar at the top: a single-guide site
             $this->single = true;
             $home = $this->parseGuideHome($this->readFile('home.md'));
+            if ($home['title'] === '') {
+                $home['title'] = $this->kitSiteName();
+            }
             $this->singleGuideSlug = Helpers::slugify($home['title']);
             $this->mapAddresses('', $this->singleGuideSlug);
             $site->guides[] = $this->readGuide('', $this->singleGuideSlug, 1, []);
@@ -59,6 +62,19 @@ class DocsifyFirstReader
         }
         $this->noteUnconvertedPages();
         return $site;
+    }
+
+    // A Starter Kit's site name (name: '…' in its index.html), for a home page without a # title; '' if none
+    private function kitSiteName(): string
+    {
+        $indexFile = $this->dir . '/index.html';
+        if (!is_file($indexFile)) {
+            return '';
+        }
+        if (preg_match('/\bname:\s*[\'"]([^\'"]+)[\'"]/', file_get_contents($indexFile), $found) === 1) {
+            return $found[1];
+        }
+        return '';
     }
 
     // Pages that aren't part of a guide (an About page, for example) aren't converted: they're listed in the notes.
@@ -158,6 +174,12 @@ class DocsifyFirstReader
             $homeFile = 'home.md';
         }
         $home = $this->parseGuideHome($this->readFile($homeFile));
+        if ($home['title'] === '') {
+            $home['title'] = $this->kitSiteName();
+        }
+        if ($home['title'] === '') {
+            $home['title'] = Helpers::titleFromSlug($slug);
+        }
         $guideFolder = sprintf('%02d', $number) . '.' . $slug;
         $guide = new Page('guide', $guideFolder, 'section-list.md');
         $guide->body = $this->toGravText($home['text']);
@@ -646,17 +668,25 @@ class DocsifyFirstReader
         $group = null;
         foreach (explode("\n", $text) as $line) {
             if (preg_match('/^- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
-                $sections[] = ['title' => $found[1], 'file' => $found[2], 'pages' => [], 'group' => false];
+                // links to other sites (and icons inside links) aren't pages of the guide
+                $file = $this->sidebarFile($found[2]);
+                if ($file !== '') {
+                    $sections[] = ['title' => $found[1], 'file' => $file, 'pages' => [], 'group' => false];
+                }
                 $group = null;
             } elseif (preg_match('/^- (.+)$/', $line, $found) === 1) {
                 // a group: its name is the section's title
                 $group = count($sections);
                 $sections[] = ['title' => trim($found[1]), 'file' => '', 'pages' => [], 'group' => true];
             } elseif ($group !== null && preg_match('/^\s+- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
+                $file = $this->sidebarFile($found[2]);
+                if ($file === '') {
+                    continue;
+                }
                 if ($sections[$group]['file'] === '') {
-                    $sections[$group]['file'] = $found[2];
+                    $sections[$group]['file'] = $file;
                 } else {
-                    $sections[$group]['pages'][] = ['title' => $found[1], 'file' => $found[2]];
+                    $sections[$group]['pages'][] = ['title' => $found[1], 'file' => $file];
                 }
             }
         }
@@ -671,6 +701,31 @@ class DocsifyFirstReader
     }
 
     // Splits lines into <div class="card"> … </div> blocks
+    // A sidebar link's Docsify file: 'module-01' and 'module-01.md' → 'module-01.md', 'intro/' → 'intro/README.md'.
+    // '' for links to other sites (https://…, //…, mailto:…) and links within the page (#…).
+    private function sidebarFile(string $target): string
+    {
+        if (preg_match('/^([a-z]+:|\/\/|#)/i', $target) === 1) {
+            return '';
+        }
+        // the page itself, without ?id=heading or #heading
+        $file = preg_replace('/[?#].*$/', '', $target);
+        $file = ltrim($file, '/');
+        if (str_starts_with($file, './')) {
+            $file = substr($file, 2);
+        }
+        if ($file === '') {
+            return '';
+        }
+        if (str_ends_with($file, '/')) {
+            return $file . 'README.md';
+        }
+        if (!str_ends_with($file, '.md')) {
+            $file .= '.md';
+        }
+        return $file;
+    }
+
     private function cardBlocks(array $lines): array
     {
         $blocks = [];

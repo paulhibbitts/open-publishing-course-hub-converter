@@ -103,13 +103,39 @@ class Preview
             $markdown = $match[2];
         }
         return [
-            'label' => $label,
+            'label' => $this->tabLabel($label, $markdown, $settings),
             'path' => $path,
             'markdown' => trim($markdown),
             'source' => $text,
             'settings' => $settings,
             'images' => $this->images($markdown, $settings, dirname($path)),
         ];
+    }
+
+    // A tab shows the page's own title, as in the other converters ("Section" or "Guide home" mean little on a
+    // site that isn't a guide); the sidebar, and a page without a title, keep their kind of page
+    private function tabLabel(string $kind, string $markdown, array $settings): string
+    {
+        if ($kind === 'Sidebar') {
+            return $kind;
+        }
+        $title = '';
+        foreach ($settings as $setting) {
+            if ($setting[0] === 'title') {
+                $title = $setting[1];
+            }
+        }
+        if ($title === '' && preg_match('/^# (.+)$/m', $markdown, $found) === 1) {
+            $title = trim($found[1]);
+        }
+        if ($title === '') {
+            return $kind;
+        }
+        // long titles are shortened, so the tabs stay on a line or two
+        if (mb_strlen($title) > 40) {
+            $title = rtrim(mb_substr($title, 0, 38)) . '…';
+        }
+        return $title;
     }
 
     // Front matter as [['name', 'value'], …] for display (lists and groups shown in short)

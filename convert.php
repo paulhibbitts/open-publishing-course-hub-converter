@@ -352,7 +352,7 @@ if ($repo !== null) {
     $reader = new DocsifyReader();
     $site = $reader->read($docsifyFolder);
     if (count($site->guides) === 0) {
-        fail('No guides were found in that Docsify site. Each guide needs a sidebar (_sidebar.md) with its reading order.');
+        fail('No guides were found in that Docsify site. Each guide needs a sidebar (_sidebar.md) with its reading order, and the pages it lists in the repo.');
     }
     // a pages folder, for the Grav site's user folder
     (new GravWriter())->write($site, $work . '/out/pages');

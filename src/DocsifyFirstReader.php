@@ -39,7 +39,7 @@ class DocsifyFirstReader
             }
             $this->singleGuideSlug = Helpers::slugify($home['title']);
             $this->mapAddresses('', $this->singleGuideSlug);
-            $site->guides[] = $this->readGuide('', $this->singleGuideSlug, 1, []);
+            $this->addGuide($site, $this->readGuide('', $this->singleGuideSlug, 1, []));
             $this->noteUnconvertedPages();
             return $site;
         }
@@ -58,10 +58,20 @@ class DocsifyFirstReader
             if (isset($guidesPage['cards'][$folder])) {
                 $card = $guidesPage['cards'][$folder];
             }
-            $site->guides[] = $this->readGuide($folder . '/', $folder, $number, $card);
+            $this->addGuide($site, $this->readGuide($folder . '/', $folder, $number, $card));
         }
         $this->noteUnconvertedPages();
         return $site;
+    }
+
+    // A guide whose sidebar pages were all missing has nothing to convert, so it's left out
+    private function addGuide(Site $site, Page $guide): void
+    {
+        if (count($guide->children) === 0) {
+            $this->notes[] = $guide->title() . ' has no pages in the site, so it wasn\'t converted';
+            return;
+        }
+        $site->guides[] = $guide;
     }
 
     // A Starter Kit's site name (name: '…' in its index.html), for a home page without a # title; '' if none
@@ -668,7 +678,7 @@ class DocsifyFirstReader
         $group = null;
         foreach (explode("\n", $text) as $line) {
             if (preg_match('/^- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
-                // links to other sites (and icons inside links) aren't pages of the guide
+                // links to other sites (and icons inside links), and pages that aren't in the site, are skipped
                 $file = $this->sidebarFile($found[2]);
                 if ($file !== '') {
                     $sections[] = ['title' => $found[1], 'file' => $file, 'pages' => [], 'group' => false];
@@ -700,13 +710,32 @@ class DocsifyFirstReader
         return $withFiles;
     }
 
-    // A sidebar link's Docsify file: 'module-01' and 'module-01.md' → 'module-01.md', 'intro/' → 'intro/README.md'.
-    // '' for links to other sites (https://…, //…, mailto:…) and links within the page (#…).
+    // A sidebar link's Docsify file, or '' for links to other sites (https://…, //…, mailto:…), links within the
+    // page (#…) and pages that aren't in the site
     private function sidebarFile(string $target): string
     {
         if (preg_match('/^([a-z]+:|\/\/|#)/i', $target) === 1) {
             return '';
         }
+        $file = $this->sidebarPath($target);
+        if ($file === '') {
+            return '';
+        }
+        // a page that isn't in the site (a sidebar can list pages that live somewhere else) is skipped, not
+        // written as an empty Grav page
+        if (!is_file($this->dir . '/' . $file)) {
+            $note = $file . ' is in a sidebar but isn\'t in the site, so it was skipped';
+            if (!in_array($note, $this->notes, true)) {
+                $this->notes[] = $note;
+            }
+            return '';
+        }
+        return $file;
+    }
+
+    // 'module-01', './module-01' and '/module-01.md?id=x' → 'module-01.md', 'intro/' → 'intro/README.md'
+    private function sidebarPath(string $target): string
+    {
         // the page itself, without ?id=heading or #heading
         $file = preg_replace('/[?#].*$/', '', $target);
         $file = ltrim($file, '/');

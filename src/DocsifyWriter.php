@@ -352,9 +352,14 @@ class DocsifyWriter
         $lines = array_merge($lines, Helpers::generated(['# ' . $title, '', $page->setting('subtitle')]), ['']);
         $lines[] = trim($this->convert($textParts['above'], $gravPath, 'home.md'));
         $lines[] = '';
+        // three cards to a row (card-list-guides) when the Grav page asks for three; two (card-list) otherwise
+        $cardList = 'card-list';
+        if ($page->setting('cards_per_row') === '3') {
+            $cardList = 'card-list card-list-guides';
+        }
         // search lives in each guide's sidebar, which the Guides page and guide homes hide
         $searchAndCards = array_merge(
-            ['Each guide has its own search box, on its reading pages.', '', '<div class="card-list">', ''],
+            ['Each guide has its own search box, on its reading pages.', '', '<div class="' . $cardList . '">', ''],
             $cards,
             ['</div>']
         );
@@ -385,6 +390,7 @@ class DocsifyWriter
     private function convert(string $markdown, string $gravPath, string $where): string
     {
         $markdown = Callouts::toDocsify($markdown);
+        $markdown = Links::newTabToDocsify($markdown);
         $markdown = Links::toDocsify($markdown, $this->guideSlugs, $this->single);
         foreach (Callouts::unknownShortcodes($markdown) as $name) {
             $this->warnings[] = $where . ': the [' . $name . '] shortcode only works in Grav (left as it is)';

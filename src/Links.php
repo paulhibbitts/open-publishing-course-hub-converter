@@ -11,19 +11,23 @@ class Links
     // $single: a single-guide site, whose sections are top-level folders and whose guide home is home.md
     public static function toDocsify(string $markdown, array $guideSlugs, bool $single): string
     {
-        // ](/path) or ](/path#heading)
-        $pattern = '/\]\((\/[^)\s#?]*)(#[^)\s?]*)?\)/';
+        // ](/path) or ](/path#heading), maybe followed by an option such as ':target=_blank'
+        $pattern = '/\]\((\/[^)\s#?]*)(#[^)\s?]*)?( \'[^\']*\')?\)/';
         return preg_replace_callback($pattern, function ($match) use ($guideSlugs, $single) {
             $anchor = '';
             if (isset($match[2])) {
                 $anchor = $match[2];
+            }
+            $option = '';
+            if (isset($match[3])) {
+                $option = $match[3];
             }
             $docsifyPath = self::docsifyPath($match[1], $anchor, $guideSlugs, $single);
             if ($docsifyPath === '') {
                 // not a guide page (the blog, an About page …): see gravOnly()
                 return $match[0];
             }
-            return '](' . $docsifyPath . ')';
+            return '](' . $docsifyPath . $option . ')';
         }, $markdown);
     }
 
@@ -32,6 +36,10 @@ class Links
     {
         $parts = self::pathParts($gravPath);
         if (count($parts) === 0 || !in_array($parts[0], $guideSlugs, true)) {
+            return '';
+        }
+        // a page's Markdown version (/guide/page.md) is a Grav feature, not a guide page
+        if (str_ends_with($gravPath, '.md')) {
             return '';
         }
         // Docsify jumps to a heading with ?id= instead of #
@@ -66,10 +74,15 @@ class Links
     public static function gravOnly(string $markdown, string $pagePath, string $siteUrl, string $where, array &$warnings): string
     {
         $siteUrl = rtrim($siteUrl, '/');
-        // [text](/path…), [text](../path…) and [text](./path…), images included
-        $pattern = '/(!?)\[([^\]]*)\]\(((?:\/|\.\.?\/)[^)\s]*)\)/';
+        // [text](/path…), [text](../path…) and [text](./path…), images included, maybe followed by an option
+        // such as ':target=_blank'
+        $pattern = '/(!?)\[([^\]]*)\]\(((?:\/|\.\.?\/)[^)\s]*)( \'[^\']*\')?\)/';
         return preg_replace_callback($pattern, function ($match) use ($pagePath, $siteUrl, $where, &$warnings) {
             $url = $match[3];
+            $option = '';
+            if (isset($match[4])) {
+                $option = $match[4];
+            }
             if (!str_starts_with($url, '/')) {
                 $url = self::resolve($pagePath, $url);
             }
@@ -77,7 +90,7 @@ class Links
                 $warnings[] = $where . ': "' . $match[3] . '" only works on the Grav site (add the original site address to link to it there)';
                 return $match[0];
             }
-            return $match[1] . '[' . $match[2] . '](' . $siteUrl . $url . ')';
+            return $match[1] . '[' . $match[2] . '](' . $siteUrl . $url . $option . ')';
         }, $markdown);
     }
 
@@ -115,14 +128,19 @@ class Links
     // form (/about). $singleGuide: the single guide's address name, or '' for a site with a Guides page.
     public static function toGrav(string $markdown, string $singleGuide, string $siteUrl): string
     {
-        // ](some/file.md) or ](some/file.md?id=heading) – a relative link to a Docsify page
-        $pattern = '/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?\)/';
+        // ](some/file.md) or ](some/file.md?id=heading) – a relative link to a Docsify page – maybe followed by an
+        // option such as ':target=_blank' (see newTabToGrav)
+        $pattern = '/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( [\'"][^\'"]*[\'"])?\)/';
         $markdown = preg_replace_callback($pattern, function ($match) use ($singleGuide) {
             $anchor = '';
             if (isset($match[2]) && $match[2] !== '') {
                 $anchor = '#' . substr($match[2], strlen('?id='));
             }
-            return '](' . self::gravPath($match[1], $singleGuide) . $anchor . ')';
+            $option = '';
+            if (isset($match[3])) {
+                $option = $match[3];
+            }
+            return '](' . self::gravPath($match[1], $singleGuide) . $anchor . $option . ')';
         }, $markdown);
 
         if ($siteUrl !== '') {
@@ -150,5 +168,40 @@ class Links
             array_unshift($parts, $singleGuide);
         }
         return '/' . implode('/', $parts);
+    }
+
+    // ---- opening links in a new tab ----
+
+    // Grav: [text](https://example.org/?target=_blank#part) → Docsify: [text](https://example.org/#part ':target=_blank')
+    public static function newTabToDocsify(string $markdown): string
+    {
+        return preg_replace('/\]\(([^)\s?]+)\?target=_blank(#[^)\s]*)?\)/', '](\1\2 \':target=_blank\')', $markdown);
+    }
+
+    // Docsify: [text](https://example.org/#part ':target=_blank') → Grav: [text](https://example.org/?target=_blank#part)
+    public static function newTabToGrav(string $markdown): string
+    {
+        // the link's address, and any #part of it, then the option in single or double quotes
+        return preg_replace('/\]\(([^)\s#]+)(#[^)\s]*)? [\'"]:target=_blank[\'"]\)/', '](\1?target=_blank\2)', $markdown);
+    }
+
+    // Docsify's image options → Grav's: ![alt](photo.jpg ':no-zoom :class=banner-image') → ![alt](photo.jpg?classes=banner-image).
+    // Grav has nothing like :no-zoom, so it's dropped.
+    public static function imageOptionsToGrav(string $markdown): string
+    {
+        $pattern = '/(!\[[^\]]*\]\()([^)\s]+) ([\'"])([^\'")]*:(?:no-zoom|class=)[^\'")]*)\3\)/';
+        return preg_replace_callback($pattern, function ($match) {
+            $classes = [];
+            foreach (preg_split('/\s+/', trim($match[4])) as $option) {
+                if (str_starts_with($option, ':class=')) {
+                    $classes[] = substr($option, strlen(':class='));
+                }
+            }
+            $source = $match[2];
+            if (count($classes) > 0) {
+                $source .= '?classes=' . implode(',', $classes);
+            }
+            return $match[1] . $source . ')';
+        }, $markdown);
     }
 }

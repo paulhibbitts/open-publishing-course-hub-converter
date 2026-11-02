@@ -730,16 +730,19 @@ class DocsifyFirstReader
     private function toGravText(string $markdown): string
     {
         $markdown = Callouts::toGrav($markdown);
+        $markdown = Links::imageOptionsToGrav($markdown);
         // links to pages whose Grav address is known (from the sidebars); any others are worked out from their path
-        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?\)/', [$this, 'linkToGravAddress'], $markdown);
+        $markdown = preg_replace_callback('/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( [\'"][^\'"]*[\'"])?\)/', [$this, 'linkToGravAddress'], $markdown);
         $singleGuide = '';
         if ($this->single) {
             $singleGuide = $this->singleGuideSlug;
         }
-        return Links::toGrav($markdown, $singleGuide, '');
+        $markdown = Links::toGrav($markdown, $singleGuide, '');
+        // last, as it needs each link's final address
+        return Links::newTabToGrav($markdown);
     }
 
-    // $match: [whole link end, the Docsify file, ?id=heading]
+    // $match: [whole link end, the Docsify file, ?id=heading, an option such as ':target=_blank']
     private function linkToGravAddress(array $match): string
     {
         if (!isset($this->gravAddresses[$match[1]])) {
@@ -749,7 +752,11 @@ class DocsifyFirstReader
         if (isset($match[2]) && $match[2] !== '') {
             $anchor = '#' . substr($match[2], strlen('?id='));
         }
-        return '](' . $this->gravAddresses[$match[1]] . $anchor . ')';
+        $option = '';
+        if (isset($match[3])) {
+            $option = $match[3];
+        }
+        return '](' . $this->gravAddresses[$match[1]] . $anchor . $option . ')';
     }
 
     // Links in a navbar or text: [['text' => …, 'target' => …], …]

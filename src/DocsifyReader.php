@@ -157,7 +157,8 @@ class DocsifyReader
         }
 
         $text = Callouts::toGrav($text);
-        return Links::toGrav($text, $this->singleGuide, $this->siteUrl);
+        $text = Links::toGrav($text, $this->singleGuide, $this->siteUrl);
+        return Links::newTabToGrav($text);
     }
 
     private function partAt(array $parts, int $index): string

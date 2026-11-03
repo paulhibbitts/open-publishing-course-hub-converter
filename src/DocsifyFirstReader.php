@@ -102,6 +102,11 @@ class DocsifyFirstReader
             $path = substr($item->getPathname(), strlen($this->dir) + 1);
             $isMarkdown = str_ends_with($path, '.md');
             $isDocsifyFile = str_starts_with(basename($path), '_');
+            // Docsify's cover page and footer have no place in a Grav guide (its theme has its own footer)
+            $docsifyOnly = ['_coverpage.md' => 'Docsify\'s cover page', '_footer.md' => 'Docsify\'s footer'];
+            if (isset($docsifyOnly[basename($path)])) {
+                $this->notes[] = $path . ' (' . $docsifyOnly[basename($path)] . ') isn\'t used in Grav, so it wasn\'t converted';
+            }
             if ($isMarkdown && !$isDocsifyFile && $path !== 'README.md' && !in_array($path, $this->filesRead, true)) {
                 $unconverted[] = $path;
             }
@@ -567,6 +572,11 @@ class DocsifyFirstReader
             $page['title'] = trim(substr($lines[$i], 2));
             $i = $this->skipBlankLines($lines, $i + 1);
         }
+        // a subtitle written as a ## heading straight after the title, as in the Docsify-This templates
+        if (isset($lines[$i]) && preg_match('/^## (.+)$/', $lines[$i], $found) === 1 && strlen($found[1]) <= 120) {
+            $page['subtitle'] = trim($found[1]);
+            return $this->skipBlankLines($lines, $i + 1);
+        }
         // a subtitle is a short one-line paragraph that isn't a link, an image, HTML or a callout
         $isOneLine = isset($lines[$i]) && (!isset($lines[$i + 1]) || trim($lines[$i + 1]) === '');
         if ($isOneLine && strlen($lines[$i]) <= 120 && preg_match('/^[\[!<>#-]/', $lines[$i]) !== 1) {
@@ -747,6 +757,7 @@ class DocsifyFirstReader
         $sections = [];
         $group = null;
         foreach (explode("\n", $text) as $line) {
+            $this->noteSidebarExtras($line);
             if (preg_match('/^- \[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/', $line, $found) === 1) {
                 // links to other sites (and icons inside links), and pages that aren't in the site, are skipped
                 $file = $this->sidebarFile($found[2]);
@@ -778,6 +789,22 @@ class DocsifyFirstReader
             }
         }
         return $withFiles;
+    }
+
+    // Notes what a sidebar has that Grav builds for itself: links to other sites, and HTML (such as a form or button)
+    private function noteSidebarExtras(string $line): void
+    {
+        $note = '';
+        // the link's own address is the last (…) on the line, after any icon image inside its text
+        if (preg_match('/^\s*- \[(.*)\]\(((?:[a-z]+:|\/\/)[^()\s]+)(?:\s+"[^"]*")?\)\s*$/i', $line, $found) === 1) {
+            $text = trim(strip_tags(preg_replace('/!\[[^\]]*\]\([^)]*\)/', '', $found[1])));
+            $note = 'the sidebar link to "' . $text . '" (' . $found[2] . ') goes to another site, so it wasn\'t converted';
+        } elseif (preg_match('/^\s*<(?!!--)[a-z]/i', $line) === 1) {
+            $note = 'a sidebar has HTML (such as a form or button), which wasn\'t converted';
+        }
+        if ($note !== '' && !in_array($note, $this->notes, true)) {
+            $this->notes[] = $note;
+        }
     }
 
     // A sidebar link's Docsify file, or '' for links to other sites (https://…, //…, mailto:…), links within the

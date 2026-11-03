@@ -20,7 +20,7 @@ class DocsifyFirstReader
     // each Docsify page's address in Grav ('topic-three-subtopic-one.md' => '/guide/topic-three-overview/topic-three-subtopic-one'),
     // worked out from the sidebars first, so links reach a page wherever it ends up
     private array $gravAddresses = [];
-    // the site's name, from the bold line at the top of a page that hides the sidebar ('' if none)
+    // the site's name, from a navbar's site title or the bold line at the top of a page that hides the sidebar ('' if none)
     private string $siteName = '';
 
     public function read(string $dir): Site
@@ -52,6 +52,7 @@ class DocsifyFirstReader
         foreach ($guideFolders as $folder) {
             $this->mapAddresses($folder . '/', $folder);
         }
+        $this->readSiteTitle($guideFolders);
         $guidesPage = $this->parseGuidesPage($this->readFile('home.md'));
         $site->guidesPage = $this->guidesPageToGrav($guidesPage);
         $number = 0;
@@ -965,6 +966,18 @@ class DocsifyFirstReader
             $text = substr($text, strlen($found[0]));
         }
         return $text;
+    }
+
+    // The site's name from a guide's navbar, where it's the site title: - [Site Name](home.md ":class=site-title")
+    private function readSiteTitle(array $guideFolders): void
+    {
+        foreach ($guideFolders as $folder) {
+            $navbarFile = $this->dir . '/' . $folder . '/_navbar.md';
+            if (is_file($navbarFile) && preg_match('/\[([^\]]+)\]\([^)]*:class=site-title[^)]*\)/', file_get_contents($navbarFile), $found) === 1) {
+                $this->siteName = $found[1];
+                return;
+            }
+        }
     }
 
     // A Guides page titled with the site's name goes back to "Guides": Grav already shows the site's name in its header

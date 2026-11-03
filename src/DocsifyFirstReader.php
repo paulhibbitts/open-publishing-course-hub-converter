@@ -22,6 +22,8 @@ class DocsifyFirstReader
     private array $gravAddresses = [];
     // the site's name, from a navbar's site title or the bold line at the top of a page that hides the sidebar ('' if none)
     private string $siteName = '';
+    // folders holding a translation of the site (such as fr/), which aren't converted
+    private array $translations = [];
 
     public function read(string $dir): Site
     {
@@ -30,6 +32,7 @@ class DocsifyFirstReader
         $this->filesRead = [];
         $this->gravAddresses = [];
         $this->siteName = '';
+        $this->translations = [];
         $site = new Site();
 
         $guideFolders = $this->guideFolders();
@@ -100,6 +103,10 @@ class DocsifyFirstReader
         $unconverted = [];
         foreach ($items as $item) {
             $path = substr($item->getPathname(), strlen($this->dir) + 1);
+            // a translation's pages are covered by its own note
+            if (str_contains($path, '/') && in_array(strtok($path, '/'), $this->translations, true)) {
+                continue;
+            }
             $isMarkdown = str_ends_with($path, '.md');
             $isDocsifyFile = str_starts_with(basename($path), '_');
             // Docsify's cover page and footer have no place in a Grav guide (its theme has its own footer)
@@ -155,6 +162,14 @@ class DocsifyFirstReader
         }
     }
 
+    // A translated copy of a site, as in the Docsify-This multilanguage template: a folder named with a language code
+    // (fr, es, pt-br …) that has its own home.md, beside a sidebar at the site's top
+    private function isTranslation(string $name): bool
+    {
+        $isLanguageCode = preg_match('/^[a-z]{2}(-[a-z]{2,4})?$/i', $name) === 1;
+        return $isLanguageCode && is_file($this->dir . '/' . $name . '/home.md') && is_file($this->dir . '/_sidebar.md');
+    }
+
     // Folders with their own _sidebar.md are guides. A sidebar without links (only a comment, so a page such as About
     // has no sidebar and no 404) doesn't make a guide.
     private function guideFolders(): array
@@ -162,6 +177,11 @@ class DocsifyFirstReader
         $folders = [];
         foreach (scandir($this->dir) as $name) {
             $isHidden = str_starts_with($name, '.');
+            if (!$isHidden && $this->isTranslation($name)) {
+                $this->translations[] = $name;
+                $this->notes[] = $name . '/ is a translation of the site, so it wasn\'t converted (only the main language is)';
+                continue;
+            }
             $sidebarFile = $this->dir . '/' . $name . '/_sidebar.md';
             if (!$isHidden && is_dir($this->dir . '/' . $name) && is_file($sidebarFile) && count($this->links(file_get_contents($sidebarFile))) > 0) {
                 $folders[] = $name;

@@ -439,7 +439,7 @@ if ($repo !== null) {
         if (findPagesFolder($searchFolder) !== '') {
             fail('That repo has Grav pages, not a Docsify site. To convert them to Docsify, zip its pages folder and use "Grav to Docsify".');
         }
-        fail('No Docsify guide site or course was found in that repo. It needs a home.md, and a _sidebar.md with the reading order or modules.');
+        fail('No Docsify guide site or course was found in that repo. This converter works with guide sites and courses: a home.md, and a _sidebar.md listing their pages.');
     }
     $direction = 'grav';
     if (isDocsifyCourse($docsifyFolder)) {
@@ -475,7 +475,7 @@ if ($repo !== null && $course === null) {
     $reader = new DocsifyReader();
     $site = $reader->read($docsifyFolder);
     if (count($site->guides) === 0) {
-        fail('No guides were found in that Docsify site. Each guide needs a sidebar (_sidebar.md) with its reading order, and the pages it lists in the repo.');
+        fail('No guides or course were found in that Docsify site. This converter works with guide sites and courses: a home.md, and a _sidebar.md listing their pages. Single pages, blogs and sites of topic pages aren\'t converted.');
     }
     // a pages folder, for the Grav site's user folder
     (new GravWriter())->write($site, $work . '/out/pages');

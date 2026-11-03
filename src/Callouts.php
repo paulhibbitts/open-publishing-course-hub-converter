@@ -24,6 +24,10 @@ class Callouts
     // sources). Docsify doesn't need them, so their tags are kept hidden for the way back.
     public const LAYOUT_SHORTCODES = ['topics', 'references'];
 
+    // An A–Z letter bar, as on the Docsify Starter Kits' Topics pages: [A](#a)|B|[C](#c)|… (a letter with topics links
+    // to its heading). Grav's [topics] shortcode makes its own.
+    private const LETTER_BAR = '(?:\[[A-Z]\]\(#[a-z]\)|[A-Z])(?:\|(?:\[[A-Z]\]\(#[a-z]\)|[A-Z])){25}';
+
     // A callout with a bold heading: > [!TIP] / > **Reflection** / > / > text …
     public static function quote(string $type, string $heading, string $text): string
     {
@@ -56,11 +60,45 @@ class Callouts
         $markdown = preg_replace_callback('/\[details((?: [^\]]*)?)\]/', [self::class, 'detailsToHtml'], $markdown);
         $markdown = str_replace('[/details]', "\n</details><!-- grav: [/details] -->", $markdown);
 
+        // a Topics page's A–Z list gets the Starter Kits' letter bar, as Grav shows one above it
+        $markdown = preg_replace_callback('/\[topics\]\n?(.*?)\[\/topics\]/s', [self::class, 'addLetterBar'], $markdown);
+
         // [hideifembedded] and the layout shortcodes only wrap text: their tags become hidden notes
         $markdown = preg_replace('/\[(\/?)hideifembedded\]/', '<!-- grav: [$1hideifembedded] -->', $markdown);
         $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
         $markdown = preg_replace('/\[(\/?)(' . $layoutNames . ')\]/', '<!-- grav: [$1$2] -->', $markdown);
         return $markdown;
+    }
+
+    // $match: [whole [topics] shortcode, its text]. The bar links each letter that has a ## heading.
+    private static function addLetterBar(array $match): string
+    {
+        preg_match_all('/^## ([A-Z])$/m', $match[1], $found);
+        $bar = [];
+        foreach (range('A', 'Z') as $letter) {
+            if (in_array($letter, $found[1], true)) {
+                $bar[] = '[' . $letter . '](#' . strtolower($letter) . ')';
+            } else {
+                $bar[] = $letter;
+            }
+        }
+        return "[topics]\n" . implode('|', $bar) . "\n\n" . $match[1] . '[/topics]';
+    }
+
+    // A letter bar written by addLetterBar (just after the hidden [topics] note) is dropped again, as Grav makes its
+    // own. On a page the converter didn't make, a letter bar starts Grav's [topics] list, which runs to the end of the
+    // page, so Grav shows its own bar there.
+    public static function letterBarToTopics(string $markdown): string
+    {
+        $markdown = preg_replace('/(<!-- grav: \[topics\] -->)\n' . self::LETTER_BAR . '\n\n/', "$1\n", $markdown);
+        if (str_contains($markdown, '[topics]') || str_contains($markdown, '<!-- grav: [topics] -->')) {
+            return $markdown;
+        }
+        $withTopics = preg_replace('/^' . self::LETTER_BAR . '\n(?:\n)?/m', "[topics]\n", $markdown, 1, $count);
+        if ($count === 0) {
+            return $markdown;
+        }
+        return rtrim($withTopics) . "\n\n[/topics]";
     }
 
     // $match: [whole shortcode, its name, its attributes, its text]
@@ -153,6 +191,7 @@ class Callouts
         // <details> made from [details] (see toDocsify) goes back to the shortcode; the summary is in the note
         $markdown = preg_replace('/<!-- grav: \[details((?: [^\]]*)?)\] --><details><summary>[^<]*<\/summary>\n/', '[details$1]', $markdown);
         $markdown = str_replace("\n</details><!-- grav: [/details] -->", '[/details]', $markdown);
+        $markdown = self::letterBarToTopics($markdown);
         $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
         $markdown = preg_replace('/<!-- grav: \[(\/?)(' . $layoutNames . ')\] -->/', '[$1$2]', $markdown);
         $markdown = str_replace("<!-- grav: [!TIP] -->\n> [!NOTE]", '> [!TIP]', $markdown);

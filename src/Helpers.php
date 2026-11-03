@@ -89,6 +89,21 @@ class Helpers
         return '<!-- grav: ' . $firstLine . "\n" . $yaml . "\n-->";
     }
 
+    // A note's Grav file is written on the server, so it must stay inside the pages folder: folders and a file name
+    // of letters, numbers, . _ and -, ending in .md, e.g. '03.modules/02.module-01/course-page.md' (no '..')
+    public static function isSafeGravFile(string $file): bool
+    {
+        if (preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\.md$/', $file) !== 1) {
+            return false;
+        }
+        foreach (explode('/', $file) as $part) {
+            if ($part === '..' || str_contains($part, '..')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Reads a hidden note back. Returns null when the text doesn't start with one, otherwise
     // ['where' => what the first line holds, 'yaml' => the front matter, 'rest' => the rest of the page]
     public static function readGravNote(string $text): ?array
@@ -98,8 +113,14 @@ class Helpers
             return null;
         }
         $where = json_decode($match[1], true);
-        if ($where === null) {
+        if (!is_array($where) || !isset($where['file']) || !self::isSafeGravFile((string)$where['file'])) {
             return null;
+        }
+        // the spacing around the text may only be blank space
+        foreach (['before', 'after'] as $name) {
+            if (isset($where[$name]) && trim((string)$where[$name]) !== '') {
+                unset($where[$name]);
+            }
         }
         return [
             'where' => $where,

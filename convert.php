@@ -387,9 +387,11 @@ if ($repo !== null) {
         $guides = array_slice($site->guides, 0, 1);
     }
     $warnings = array_values(array_unique($writer->warnings));
-    // the converter doesn't know the site's name (Grav keeps it outside the pages folder), so it can't add the site title
+    // the converter doesn't know the site's name or favicon (Grav keeps them outside the pages folder), so it can't add them
     $tips = ['to show your site\'s name at the top of pages without a sidebar (and on phones), add this as the first line of '
-        . 'each _navbar.md: - [Your Site Name](home.md ":class=site-title")'];
+        . 'each _navbar.md: - [Your Site Name](home.md ":class=site-title")',
+        'to use your Grav site\'s favicon, copy it from user/themes/mytheme/images/favicon/ into the Docsify site and add '
+        . '&loadFavicon= with its file name (such as favicon.png) to the Docsify-This link'];
 }
 writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings, $tips ?? []);
 

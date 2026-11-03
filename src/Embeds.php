@@ -5,8 +5,11 @@ namespace OPG;
 // line above it, so the way back gives the exact shortcode again.
 //   [googleslides title="…"]address[/googleslides], [iframe url="…"/], [youtube]address[/youtube] → a responsive
 //     iframe, as in the Docsify course template (<div class="video-container-16by9"><iframe …></iframe></div>)
-//   [embedly]address[/embedly] → an Embedly card (<a class="embedly-card" …>), which Docsify-This and the kits load
-//   [pdf title="…"]address[/pdf], [linkpreviewcard url="…"] → a link
+//   [embedly]address[/embedly], [linkpreviewcard url="…"] → an Embedly card (<a class="embedly-card" …>), which
+//     Docsify-This and the kits load
+//   [pdf title="…"]address[/pdf] → a link
+//   ![alt](image.jpg?cropZoom=800,300) – an image Grav crops to a wide banner → the kits' banner image
+//     (![alt](image.jpg ':class=banner-image')), as Docsify ignores Grav's image options
 //   [safe-email …]address[/safe-email] → an email link
 //   [button label="…" url="…" /] → a link button, as in the Starter Kits ([label](url ':class=button'))
 //   [fa="calendar-o"][/fa] → a Font Awesome icon in Docsify-This's own form (:far fa-calendar fa-fw:), kept on its
@@ -29,16 +32,20 @@ class Embeds
             '/\[linkpreviewcard((?: [^\]]*)?)\s*\/?\]/' => 'linkpreview',
             '/\[safe-email((?: [^\]]*)?)\](.*?)\[\/safe-email\]/' => 'email',
             '/\[button((?: [^\]]*)?)\s*\/\]/' => 'button',
+            '/!\[([^\]]*)\]\(([^)\s?]+\?cropZoom=[0-9]+,[0-9]+)\)/' => 'banner',
         ];
         foreach ($patterns as $pattern => $kind) {
             $text = $markdown;
             $markdown = preg_replace_callback($pattern, function ($match) use ($kind, $text) {
-                $attributes = self::attributes($match[1][0]);
                 $address = '';
                 if (isset($match[2])) {
                     $address = trim($match[2][0]);
                 }
-                $html = self::html($kind, $attributes, $address);
+                if ($kind === 'banner') {
+                    $html = self::banner($match[1][0], $address);
+                } else {
+                    $html = self::html($kind, self::attributes($match[1][0]), $address);
+                }
                 if ($html === '') {
                     return $match[0][0];
                 }
@@ -66,13 +73,12 @@ class Embeds
                 $url = $attributes['url'] ?? $attributes['src'] ?? '';
                 return $url === '' ? '' : self::iframe($url, $title !== '' ? $title : 'Embedded content');
             case 'embedly':
-                return '<a class="embedly-card" data-card-theme="light" data-card-controls="0" data-card-align="left" href="'
-                    . htmlspecialchars($address) . '">' . htmlspecialchars($address) . '</a>';
+                return self::embedlyCard($address);
             case 'pdf':
                 return '[' . ($title !== '' ? $title : $address) . '](' . $address . ')';
             case 'linkpreview':
                 $url = $attributes['url'] ?? '';
-                return $url === '' ? '' : '[' . $url . '](' . $url . ')';
+                return $url === '' ? '' : self::embedlyCard($url);
             case 'email':
                 return '[' . $address . '](mailto:' . $address . ')';
             case 'button':
@@ -80,6 +86,23 @@ class Embeds
                 return $url === '' ? '' : '[' . ($attributes['label'] ?? $url) . '](' . $url . ' \':class=button\')';
         }
         return '';
+    }
+
+    private static function embedlyCard(string $url): string
+    {
+        return '<a class="embedly-card" data-card-theme="light" data-card-controls="0" data-card-align="left" href="'
+            . htmlspecialchars($url) . '">' . htmlspecialchars($url) . '</a>';
+    }
+
+    // An image cropped to a wide banner (at least twice as wide as it's tall) → the kits' banner image; other crops
+    // stay as they are ('' = unchanged)
+    private static function banner(string $alt, string $address): string
+    {
+        preg_match('/^(.*)\?cropZoom=([0-9]+),([0-9]+)$/', $address, $found);
+        if ((int) $found[2] < 2 * (int) $found[3]) {
+            return '';
+        }
+        return '![' . $alt . '](' . $found[1] . " ':class=banner-image')";
     }
 
     // Grav's Font Awesome 4 names: a name ending in -o is the regular (outline) style in Font Awesome 6, others solid

@@ -34,6 +34,12 @@ class CourseGravReader extends GravReader
                 $site->courseFooter = $this->readPage($pagesDir, $name, $file, 'footer');
                 continue;
             }
+            // the skeleton's Read Me page is about setting up the Grav site (Git Sync, the Admin panel), not the course
+            if (Helpers::slugFromFolder($name) === 'readme') {
+                $page = $this->readPage($pagesDir, $name, $file, 'menu');
+                $this->notes[] = $page->title() . ' (' . $name . ') is about the Grav site, so it wasn\'t converted';
+                continue;
+            }
             if (Helpers::slugFromFolder($name) === 'home') {
                 $site->courseHome = $this->readHome($pagesDir, $name, $file);
                 continue;

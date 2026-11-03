@@ -226,7 +226,8 @@ class CourseDocsifyWriter
                 if (trim($line) === '') {
                     continue;
                 }
-                if (preg_match('/^\s*[-*]?\s*(\[[^\]]+\]\([^)]+\))\s*$/', $line, $found) === 1) {
+                // a link on its own line; its text may hold an icon's note, e.g. [<!-- … [fa="x"][/fa] -->Calendar](…)
+                if (preg_match('/^\s*[-*]?\s*(\[(?:[^\[\]]|\[[^\]]*\])+\]\([^)]+\))\s*$/', $line, $found) === 1) {
                     $links[] = $found[1];
                 } else {
                     $onlyLinks = false;

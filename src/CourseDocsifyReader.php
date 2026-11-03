@@ -482,6 +482,11 @@ class CourseDocsifyReader
             }
         }
         $page->body = $this->toGravText($body, $page, $file);
+        // Open Matter shows the description only on the Modules page, so the page starts with it, as Open Course
+        // Hub's own modules do
+        if (isset($settings['description'])) {
+            $page->body = '## **' . $settings['description'] . "**\n\n" . $page->body;
+        }
         $page->yaml = $this->yaml($page->meta);
         return $page;
     }

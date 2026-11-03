@@ -247,16 +247,29 @@ class Embeds
     // image option).
     public static function iconsToGrav(string $markdown): string
     {
-        $markdown = preg_replace_callback('/!\[[^\]]*\]\(https:\/\/api\.iconify\.design\/fa6-(solid|regular|brands)\/([a-z0-9-]+)\.svg[^)\s]*\)/', function ($match) {
+        // Font Awesome 6 names → their Font Awesome 4 names, as Open Matter uses Font Awesome 4
+        $renamed = [
+            'circle-check' => 'check-circle', 'circle-info' => 'info-circle', 'circle-question' => 'question-circle',
+            'triangle-exclamation' => 'exclamation-triangle', 'file-lines' => 'file-text', 'pen-to-square' => 'pencil-square',
+            'magnifying-glass' => 'search', 'house' => 'home', 'gear' => 'cog', 'xmark' => 'times',
+            'arrow-up-right-from-square' => 'external-link', 'up-right-from-square' => 'external-link', 'keyboard' => 'keyboard-o',
+        ];
+        $markdown = preg_replace_callback('/!\[[^\]]*\]\(https:\/\/api\.iconify\.design\/fa6-(solid|regular|brands)\/([a-z0-9-]+)\.svg[^)\s]*\)/', function ($match) use ($renamed) {
             $name = $match[2];
-            if ($match[1] === 'regular') {
+            if (isset($renamed[$name])) {
+                $name = $renamed[$name];
+            }
+            if ($match[1] === 'regular' && !str_ends_with($name, '-o')) {
                 $name .= '-o';
             }
             return '[fa="' . $name . '"][/fa] ';
         }, $markdown);
-        return preg_replace_callback('/:(fa[srb]) fa-([a-z0-9-]+)(?: fa-[a-z0-9-]+)*:/', function ($match) {
+        return preg_replace_callback('/:(fa[srb]) fa-([a-z0-9-]+)(?: fa-[a-z0-9-]+)*:/', function ($match) use ($renamed) {
             $name = $match[2];
-            if ($match[1] === 'far') {
+            if (isset($renamed[$name])) {
+                $name = $renamed[$name];
+            }
+            if ($match[1] === 'far' && !str_ends_with($name, '-o')) {
                 $name .= '-o';
             }
             return '[fa="' . $name . '"][/fa]';

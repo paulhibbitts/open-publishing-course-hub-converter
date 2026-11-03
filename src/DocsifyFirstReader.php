@@ -20,6 +20,8 @@ class DocsifyFirstReader
     // each Docsify page's address in Grav ('topic-three-subtopic-one.md' => '/guide/topic-three-overview/topic-three-subtopic-one'),
     // worked out from the sidebars first, so links reach a page wherever it ends up
     private array $gravAddresses = [];
+    // the site's name, from the bold line at the top of a page that hides the sidebar ('' if none)
+    private string $siteName = '';
 
     public function read(string $dir): Site
     {
@@ -27,6 +29,7 @@ class DocsifyFirstReader
         $this->notes = [];
         $this->filesRead = [];
         $this->gravAddresses = [];
+        $this->siteName = '';
         $site = new Site();
 
         $guideFolders = $this->guideFolders();
@@ -60,6 +63,7 @@ class DocsifyFirstReader
             }
             $this->addGuide($site, $this->readGuide($folder . '/', $folder, $number, $card));
         }
+        $this->useGuidesTitle($site->guidesPage);
         $this->noteUnconvertedPages();
         return $site;
     }
@@ -948,12 +952,32 @@ class DocsifyFirstReader
         return $links;
     }
 
-    // The line that hides the sidebar (and the comment above it) isn't part of the author's text
+    // The line that hides the sidebar (and the comment above it) isn't part of the author's text. Neither is the site's
+    // name in bold at the top of such a page (Docsify only shows the name above the sidebar; Grav shows it in its header).
     private function withoutHideSidebar(string $text): string
     {
         $text = str_replace("\r\n", "\n", $text);
+        $hidesSidebar = preg_match('/^<style>aside\.sidebar.*<\/style>\s*$/m', $text) === 1;
         $text = str_replace('<!-- Hides the sidebar on this page -->', '', $text);
-        return preg_replace('/^<style>aside\.sidebar.*<\/style>\s*$/m', '', $text);
+        $text = preg_replace('/^<style>aside\.sidebar.*<\/style>\s*$/m', '', $text);
+        if ($hidesSidebar && preg_match('/^\s*\*\*([^*\n]+)\*\*[ \t]*\n/', $text, $found) === 1) {
+            $this->siteName = $found[1];
+            $text = substr($text, strlen($found[0]));
+        }
+        return $text;
+    }
+
+    // A Guides page titled with the site's name goes back to "Guides": Grav already shows the site's name in its header
+    private function useGuidesTitle(?Page $guidesPage): void
+    {
+        if ($guidesPage === null) {
+            return;
+        }
+        $title = $guidesPage->meta['title'] ?? '';
+        if ($title !== '' && ($title === $this->siteName || $title === $this->kitSiteName())) {
+            $guidesPage->meta['title'] = 'Guides';
+            $guidesPage->yaml = $this->yaml($guidesPage->meta);
+        }
     }
 
     // 'guide/section/README' (from a card link) → 'guide/section/README.md'; 'guide/why-it-matters' → 'guide/why-it-matters.md'

@@ -293,6 +293,8 @@ class DocsifyFirstReader
             $settings['attribution_text'] = $home['attribution_text'];
         }
         $settings['published'] = true;
+        // guides are reached from the Guides page's cards, so they're kept out of the site menu (Hide from Menu)
+        $settings['hide_from_menu'] = true;
         $settings['hide_page_title'] = false;
         $settings['child_type'] = 'section';
         $settings['hide_git_sync_repo_link'] = false;
@@ -728,6 +730,8 @@ class DocsifyFirstReader
         }
         $page->meta['cards_per_row'] = $guidesPage['cards_per_row'];
         $page->meta['published'] = true;
+        // the Guides page is usually the site's home page, so it's kept out of the site menu (Hide from Menu)
+        $page->meta['hide_from_menu'] = true;
         $page->yaml = $this->yaml($page->meta);
         $page->body = $this->toGravText($guidesPage['text']);
         return $page;

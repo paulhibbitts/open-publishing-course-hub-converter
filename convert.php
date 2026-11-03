@@ -362,6 +362,14 @@ if ($repo !== null) {
     (new GravWriter())->write($site, $work . '/out/pages');
     $guides = $site->guides;
     $warnings = array_values(array_unique($reader->notes));
+    // the site's home page: the Guides page, or a single guide's home when there's no Guides page
+    $homeTitle = $site->guides[0]->title();
+    $homePage = '/' . $site->guides[0]->slug();
+    if ($site->guidesPage !== null) {
+        $homeTitle = 'the ' . $site->guidesPage->title() . ' page';
+        $homePage = '/' . $site->guidesPage->slug();
+    }
+    $tips = ['to start your site on ' . $homeTitle . ', set Home Page to ' . $homePage . ' in Configuration → System'];
 } else {
     $pagesFolder = findPagesFolder($searchFolder);
     if ($pagesFolder === '') {

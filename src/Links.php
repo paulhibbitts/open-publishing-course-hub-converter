@@ -71,10 +71,12 @@ class Links
     // Links to pages listed in $map (a Grav address without its ending / => its Docsify file, e.g. '/modules/module-01'
     // => 'module-01.md'), as for a course, where module pages and menu pages all sit at the site's top
     // $pagePath: the page's own Grav address, which relative links (../modules/module-02) start from
-    public static function mapToDocsify(string $markdown, array $map, string $pagePath): string
+    // $originals: each converted link as [its Docsify address, its Grav address as written], so the way back can give
+    // the same Grav address again (../modules/module-02 and /modules/module-02 are the same Docsify address)
+    public static function mapToDocsify(string $markdown, array $map, string $pagePath, ?array &$originals = null): string
     {
         $pattern = '/\]\(((?:\/(?!\/)|\.\.?\/)[^)\s#?]*)(#[^)\s?]*)?( "[^"]*"| \'[^\']*\')?\)/';
-        return preg_replace_callback($pattern, function ($match) use ($map, $pagePath) {
+        return preg_replace_callback($pattern, function ($match) use ($map, $pagePath, &$originals) {
             $url = $match[1];
             if (!str_starts_with($url, '/')) {
                 $url = self::resolve($pagePath, $url);
@@ -88,7 +90,40 @@ class Links
             if (isset($match[2]) && $match[2] !== '') {
                 $anchor = '?id=' . substr($match[2], 1);
             }
+            // only a link written differently from the page's usual address (the first one in $map) is kept
+            $written = $match[1] . ($match[2] ?? '');
+            if ($originals !== null && $written !== array_search($map[$path], $map, true) . ($match[2] ?? '')) {
+                $originals[] = [$map[$path] . $anchor, $written];
+            }
             return '](' . $map[$path] . $anchor . ($match[3] ?? '') . ')';
+        }, $markdown);
+    }
+
+    // The way back for a course: links to its Docsify pages (module-01.md, module-01.md?id=heading, or module-01
+    // without .md) → their Grav address. $originals (from mapToDocsify) gives a link its Grav address as it was
+    // written, as long as it still goes to the same page; other links get the page's address from $addresses
+    // (Docsify file => Grav address).
+    public static function mapToGrav(string $markdown, array $addresses, array $originals = []): string
+    {
+        $pattern = '/\]\(((?:\.\/)?[A-Za-z0-9_\/-]+(?:\.[A-Za-z0-9_-]+)*?)(\.md)?(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/';
+        return preg_replace_callback($pattern, function ($match) use ($addresses, &$originals) {
+            $file = preg_replace('/^\.\//', '', $match[1]) . '.md';
+            if (!isset($addresses[$file])) {
+                return $match[0];
+            }
+            $docsifyAddress = $file . ($match[3] ?? '');
+            $option = $match[4] ?? '';
+            foreach ($originals as $index => $original) {
+                if ($original[0] === $docsifyAddress) {
+                    unset($originals[$index]);
+                    return '](' . $original[1] . $option . ')';
+                }
+            }
+            $anchor = '';
+            if (isset($match[3]) && $match[3] !== '') {
+                $anchor = '#' . substr($match[3], strlen('?id='));
+            }
+            return '](' . $addresses[$file] . $anchor . $option . ')';
         }, $markdown);
     }
 

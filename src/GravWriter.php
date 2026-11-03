@@ -25,13 +25,14 @@ class GravWriter
         }
     }
 
-    private function writePage(Page $page, string $out): void
+    // A page's file (its front matter and text) and its images, in its folder under $out (also used for courses)
+    public function writePage(Page $page, string $out): void
     {
         $folder = $out . '/' . $page->folder;
         if (!is_dir($folder)) {
             mkdir($folder, 0700, true);
         }
-        $text = "---\n" . rtrim($page->yaml) . "\n---\n\n" . trim($page->body) . "\n";
+        $text = "---\n" . rtrim($page->yaml) . "\n---\n" . $page->textBefore . trim($page->body) . $page->textAfter;
         file_put_contents($folder . '/' . $page->file, $text);
 
         foreach ($page->images as $image) {

@@ -15,6 +15,8 @@ class Page
     public array $imageSources = []; // when read from Docsify: image name => where the file is now
     public array $children = [];     // the sections of a guide, or the pages of a section
     public array $menuPages = [];    // a guide's unnumbered pages, such as Topics and Resources
+    public string $textBefore = "\n"; // the blank space between the front matter and the text, and after the text,
+    public string $textAfter = "\n";  // so a course page can be written back exactly as it was
 
     public function __construct(string $kind, string $folder, string $file)
     {

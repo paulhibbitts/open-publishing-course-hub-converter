@@ -19,10 +19,12 @@ class Preview
         $this->out = rtrim($out, '/');
     }
 
-    // $direction: 'grav' or 'docsify' (what the files were converted to)
-    public function samplePages(string $direction): array
+    // $direction: 'grav' or 'docsify' (what the files were converted to); $isCourse: a course rather than guides
+    public function samplePages(string $direction, bool $isCourse = false): array
     {
-        if ($direction === 'grav') {
+        if ($isCourse) {
+            $paths = $this->courseSamples($direction);
+        } elseif ($direction === 'grav') {
             $paths = $this->gravSamples();
         } else {
             $paths = $this->docsifySamples();
@@ -35,6 +37,40 @@ class Preview
             $pages[] = $this->page($label, $path, $direction);
         }
         return $pages;
+    }
+
+    // A course: its home page, its first two modules, its first menu page and its sidebar
+    private function courseSamples(string $direction): array
+    {
+        if ($direction === 'grav') {
+            $samples = ['Home page' => $this->firstMatch('pages/*/page.md')];
+            $modules = glob($this->out . '/pages/*/*/course-page.md');
+            sort($modules, SORT_NATURAL);
+            foreach (array_slice($modules, 0, 2) as $index => $module) {
+                $samples['Module ' . ($index + 1)] = substr($module, strlen($this->out) + 1);
+            }
+            $menuPages = glob($this->out . '/pages/*/page.md');
+            sort($menuPages, SORT_NATURAL);
+            if (isset($menuPages[1])) {
+                $samples['Menu page'] = substr($menuPages[1], strlen($this->out) + 1);
+            }
+            $samples['Sidebar'] = 'pages/sidebar/default.md';
+        } else {
+            $samples = ['Home page' => 'home.md'];
+            // the sidebar's first two modules and the navbar's first page
+            $sidebar = is_file($this->out . '/_sidebar.md') ? file_get_contents($this->out . '/_sidebar.md') : '';
+            preg_match_all('/^- \[[^\]]+\]\(([^)\s]+\.md)\)/m', $sidebar, $links);
+            foreach (array_slice($links[1], 0, 2) as $index => $module) {
+                $samples['Module ' . ($index + 1)] = $module;
+            }
+            $navbar = is_file($this->out . '/_navbar.md') ? file_get_contents($this->out . '/_navbar.md') : '';
+            if (preg_match('/\]\(([^)\s]+\.md)\)/', $navbar, $found) === 1) {
+                $samples['Menu page'] = $found[1];
+            }
+            $samples['Sidebar'] = '_sidebar.md';
+        }
+        // only pages that are there
+        return array_filter($samples, fn($path) => $path !== '' && is_file($this->out . '/' . $path));
     }
 
     // In a Grav pages folder: the Guides List page, then the first guide's Section List page, section, page and menu page

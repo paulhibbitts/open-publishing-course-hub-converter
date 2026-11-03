@@ -5,7 +5,7 @@ namespace OPG;
 // Kit: every page at the site's top – home.md (the course home), a page per module and the menu pages – with images in
 // images/, the modules (and the sidebar's link lists, such as the LMS links) in _sidebar.md, the menu pages and Contact
 // in _navbar.md, and the footer in _footer.md. The same Markdown pages work in a repo shown by Docsify-This and in a
-// Starter Kit's docs/ folder.
+// Starter Kit's docs/ folder. Hidden notes keep what's needed to go back to the same Grav pages (CourseDocsifyReader).
 class CourseDocsifyWriter
 {
     // Links that only work on the Grav site, and anything else worth checking (for conversion-notes.txt)
@@ -18,6 +18,8 @@ class CourseDocsifyWriter
     private array $addresses = [];
     // image name in images/ => the file it was copied from
     private array $copiedImages = [];
+    // the links converted since the last hidden note was written, as [Docsify address, Grav address as written]
+    private array $pageLinks = [];
 
     public function write(Site $site, string $pagesDir, string $out, string $siteUrl = ''): void
     {
@@ -57,10 +59,10 @@ class CourseDocsifyWriter
             }
         }
         $this->writeFile('_navbar.md', implode("\n", $navbar));
-        $this->writeSidebar($modulesPage, $sidebarGroups);
+        $this->writeSidebar($modulesPage, $sidebarGroups, $site->courseHome !== null);
         if ($site->courseFooter !== null) {
             $footer = trim($this->convert($this->withImagesFolder($site->courseFooter), '/', '_footer.md'));
-            $this->writeFile('_footer.md', implode("\n", [Helpers::gravNote($site->courseFooter), '', $footer]));
+            $this->writeFile('_footer.md', implode("\n", [$this->note($site->courseFooter), '', $footer]));
         }
     }
 
@@ -96,7 +98,7 @@ class CourseDocsifyWriter
         }
         $body = $this->withoutRepeatedHeading($this->withImagesFolder($module), $title);
         $body = $this->convert($body, $gravPath, $file);
-        $lines = array_merge([Helpers::gravNote($module), ''], Helpers::generated($head), ['', trim($body)]);
+        $lines = array_merge([$this->note($module), ''], Helpers::generated($head), ['', trim($body)]);
         $this->writeFile($file, implode("\n", $lines));
     }
 
@@ -133,7 +135,11 @@ class CourseDocsifyWriter
             if ($modulesPage->setting('description') !== '') {
                 $head = array_merge($head, ['', $modulesPage->setting('description')]);
             }
-            $lines = array_merge([Helpers::gravNote($modulesPage, $this->siteNote()), ''], Helpers::generated($head));
+            $extra = $this->siteNote();
+            if (trim($modulesPage->body) !== '') {
+                $extra['body'] = trim($modulesPage->body);
+            }
+            $lines = array_merge([$this->note($modulesPage, $extra), ''], Helpers::generated($head));
             $this->writeFile('home.md', implode("\n", $lines));
             return;
         }
@@ -141,32 +147,50 @@ class CourseDocsifyWriter
         foreach ($home->children as $part) {
             $parts[$part->slug()] = $part;
         }
-        // the page's title as its heading (Grav hides it, with the site's name in its header instead), so the page has
-        // an H1 like every other page
-        $lines = array_merge([Helpers::gravNote($home, $this->siteNote()), ''], Helpers::generated(['# ' . $home->title()]), ['']);
+        // the home page's own text (anything besides its parts) is converted like any other page, a stretch at a time
+        $ownText = [];
+        $sections = [];
+        // the links in the home page's own text, kept apart from each part's links
+        $homeLinks = [];
         foreach (explode("\n", $home->body) as $line) {
             if (preg_match('/^\[plugin:page-inject\]\(\/[^)]*\/([^\/)]+)\)\s*$/', trim($line), $found) === 1 && isset($parts[$found[1]])) {
-                $lines = array_merge($lines, $this->homePart($parts[$found[1]], trim($line)));
+                $sections[] = $this->ownHomeText($ownText);
+                $ownText = [];
+                $homeLinks = array_merge($homeLinks, $this->pageLinks);
+                $this->pageLinks = [];
+                $sections[] = implode("\n", $this->homePart($parts[$found[1]], trim($line)));
                 continue;
             }
-            $lines[] = $line;
+            $ownText[] = $line;
         }
-        $text = implode("\n", $lines);
-        // the home page's own text (anything besides its parts) is converted like any other page
-        $this->writeFile('home.md', preg_replace("/\n{3,}/", "\n\n", $text));
+        $sections[] = $this->ownHomeText($ownText);
+        $this->pageLinks = array_merge($homeLinks, $this->pageLinks);
+        // the page's title as its heading (Grav hides it, with the site's name in its header instead), so the page has
+        // an H1 like every other page. Its note comes last, so it holds the links of its own text.
+        $head = array_merge([$this->note($home, $this->siteNote()), ''], Helpers::generated(['# ' . $home->title()]), ['']);
+        $this->writeFile('home.md', implode("\n", $head) . implode("\n", $sections));
     }
 
-    // One part of the home page, with its Grav settings and the page-inject line it came from in hidden notes
+    // A stretch of the home page's own text (often just the blank lines between its parts), converted
+    private function ownHomeText(array $lines): string
+    {
+        return preg_replace("/\n{3,}/", "\n\n", $this->convert(implode("\n", $lines), '/home', 'home.md'));
+    }
+
+    // One part of the home page, with its Grav settings and the page-inject line it came from in hidden notes, and a
+    // note where it ends (text after it is the home page's own)
     private function homePart(Page $part, string $injectLine): array
     {
         $body = trim($this->convert($this->withImagesFolder($part), '/home', 'home.md'));
-        $lines = [Helpers::gravNote($part), Embeds::hiddenLine($injectLine), ''];
+        $lines = ['', $this->note($part), Embeds::hiddenLine($injectLine), ''];
         if ($part->file === 'alert.md') {
             // an alert box in Grav: the Starter Kits' announcement box (blank lines around the text, so Docsify
             // reads the Markdown inside it)
-            return array_merge($lines, Helpers::generated(['<blockquote class="announcement">', '']), ['', $body, ''], Helpers::generated(['', '</blockquote>']), ['']);
+            $lines = array_merge($lines, Helpers::generated(['<blockquote class="announcement">', '']), ['', $body, ''], Helpers::generated(['', '</blockquote>']));
+        } else {
+            $lines = array_merge($lines, [$body]);
         }
-        return array_merge($lines, [$body, '']);
+        return array_merge($lines, ['', '<!-- grav:/part -->', '']);
     }
 
     // A menu page (Schedule, Topics …): its text, with its title added when the text doesn't start with one
@@ -174,7 +198,7 @@ class CourseDocsifyWriter
     {
         $file = $page->slug() . '.md';
         $body = trim($this->convert($this->withImagesFolder($page), '/' . $page->slug(), $file));
-        $lines = [Helpers::gravNote($page), ''];
+        $lines = [$this->note($page), ''];
         if (!str_starts_with($body, '# ')) {
             $lines = array_merge($lines, Helpers::generated(['# ' . $page->title()]), ['']);
         }
@@ -183,7 +207,9 @@ class CourseDocsifyWriter
     }
 
     // The course sidebar, as in the Starter Kits: a section of links only (such as the LMS links) becomes a group in
-    // _sidebar.md; the course details (instructor, office hours …) go on a Contact page. Returns the sidebar groups.
+    // _sidebar.md; the course details (instructor, office hours …) go on a Contact page. Where each group was, the
+    // Contact page has a hidden note with the section's layout, so the way back puts it together again.
+    // Returns the sidebar groups.
     private function writeContact(Page $sidebarPage): array
     {
         $text = trim($this->convert($this->withImagesFolder($sidebarPage), '/', 'contact.md'));
@@ -213,27 +239,88 @@ class CourseDocsifyWriter
                 foreach ($links as $link) {
                     $groups[] = '  - ' . $link;
                 }
+                $contact[] = self::groupNote($section, $heading, $links);
                 continue;
             }
             if (trim($section) !== '') {
                 $contact[] = trim($section);
             }
         }
-        if (count($contact) > 0) {
-            $lines = array_merge([Helpers::gravNote($sidebarPage), ''], Helpers::generated(['# Contact']), ['', implode("\n\n", $contact)]);
+        $hasDetails = false;
+        foreach ($contact as $section) {
+            if (!str_starts_with($section, '<!-- grav:sidebar-group ')) {
+                $hasDetails = true;
+            }
+        }
+        if ($hasDetails) {
+            $lines = array_merge([$this->note($sidebarPage), ''], Helpers::generated(['# Contact']), ['', implode("\n\n", $contact)]);
             $this->writeFile('contact.md', implode("\n", $lines));
         }
         return $groups;
     }
 
-    // The modules in order, then any link groups from the course sidebar
-    private function writeSidebar(Page $modulesPage, array $groups): void
+    // A sidebar section of links, as a hidden note: the section with its heading and links taken out, e.g.
+    // "## {heading}\n{link}  \n{link}", so the way back can fill in the heading and links from _sidebar.md
+    private static function groupNote(string $section, string $heading, array $links): string
+    {
+        $layout = trim($section);
+        $headingAt = strpos($layout, $heading);
+        $layout = substr($layout, 0, $headingAt) . '{heading}' . substr($layout, $headingAt + strlen($heading));
+        foreach ($links as $link) {
+            $at = strpos($layout, $link);
+            $layout = substr($layout, 0, $at) . '{link}' . substr($layout, $at + strlen($link));
+        }
+        $json = json_encode(['layout' => $layout], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return '<!-- grav:sidebar-group ' . str_replace('-->', '-->', $json) . ' -->';
+    }
+
+    // The modules in order, then any link groups from the course sidebar. With a home page, the Modules page's own
+    // settings are kept here (it has no Docsify page of its own).
+    private function writeSidebar(Page $modulesPage, array $groups, bool $hasHome): void
     {
         $lines = [];
+        if ($hasHome) {
+            $extra = [];
+            if (trim($modulesPage->body) !== '') {
+                $extra['body'] = trim($modulesPage->body);
+            }
+            $lines = [Helpers::gravNote($modulesPage, array_merge($extra, self::spacing($modulesPage))), ''];
+        }
         foreach ($modulesPage->children as $module) {
             $lines[] = '- [' . $module->title() . '](' . $module->slug() . '.md)';
         }
         $this->writeFile('_sidebar.md', implode("\n", array_merge($lines, $groups)));
+    }
+
+    // A page's hidden note, with the links converted since the last one (see Links::mapToDocsify) and the page's
+    // spacing around its text when it isn't the usual one
+    private function note(Page $page, array $extra = []): string
+    {
+        if (count($this->pageLinks) > 0) {
+            $extra['links'] = $this->pageLinks;
+        }
+        $this->pageLinks = [];
+        return Helpers::gravNote($page, array_merge($extra, self::spacing($page)));
+    }
+
+    // The blank space before and after a page's text, when it isn't a blank line before and a line end after
+    private static function spacing(Page $page): array
+    {
+        $text = trim($page->body);
+        $before = $page->body;
+        $after = '';
+        if ($text !== '') {
+            $before = substr($page->body, 0, strpos($page->body, $text));
+            $after = substr($page->body, strpos($page->body, $text) + strlen($text));
+        }
+        $spacing = [];
+        if ($before !== "\n") {
+            $spacing['before'] = $before;
+        }
+        if ($after !== "\n") {
+            $spacing['after'] = $after;
+        }
+        return $spacing;
     }
 
     // The original site's address, kept with the home page (as for guides)
@@ -305,7 +392,7 @@ class CourseDocsifyWriter
         $markdown = Embeds::toDocsify($markdown);
         $markdown = Callouts::toDocsify($markdown);
         $markdown = Links::newTabToDocsify($markdown);
-        $markdown = Links::mapToDocsify($markdown, $this->addresses, $gravPath);
+        $markdown = Links::mapToDocsify($markdown, $this->addresses, $gravPath, $this->pageLinks);
         foreach (Callouts::unknownShortcodes($markdown) as $name) {
             $this->warnings[] = $where . ': the [' . $name . '] shortcode only works in Grav (left as it is)';
         }

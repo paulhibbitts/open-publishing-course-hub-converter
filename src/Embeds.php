@@ -178,4 +178,57 @@ class Embeds
         $markdown = preg_replace('/<!-- ' . self::NOTE . ': (\[fa[^\n]*?) -->:fa[srb] fa-[a-z0-9-]+ fa-fw:/', '$1', $markdown);
         return preg_replace('/\n?(> )?<!-- ' . self::NOTE . ': (.*?) -->\n(?:> )?[^\n]*\n?(?(1)> )/', '$2', $markdown);
     }
+
+    // Embedded pages written in Docsify as HTML (no hidden note) → Grav's embed shortcodes, as Grav 2 shows a raw
+    // <iframe> as text: Google Slides → [googleslides], YouTube → [youtube], H5P → [h5p] (which resizes it, so H5P's
+    // resizer script is left out), anything else → [iframe url="…" /] (16:9 inside the Starter Kits'
+    // video-container-16by9, otherwise Open Matter's usual 4:3)
+    public static function iframesToGrav(string $markdown): string
+    {
+        $pattern = '/(?:<div class="([a-z0-9 -]*)">\s*)?<iframe\s([^>]*)>\s*<\/iframe>(?:\s*<\/div>)?(\s*<script [^>]*h5p-resizer[^>]*><\/script>)?/i';
+        return preg_replace_callback($pattern, function ($match) {
+            if (preg_match('/\ssrc="([^"]+)"/i', ' ' . $match[2], $found) !== 1) {
+                return $match[0];
+            }
+            $url = html_entity_decode($found[1], ENT_QUOTES);
+            $title = '';
+            if (preg_match('/\stitle="([^"]*)"/i', ' ' . $match[2], $found) === 1) {
+                $title = ' title="' . str_replace('"', "'", html_entity_decode($found[1], ENT_QUOTES)) . '"';
+            }
+            if (str_contains($url, 'docs.google.com/presentation')) {
+                return '[googleslides' . $title . ']' . $url . '[/googleslides]';
+            }
+            if (str_contains($url, '/h5p/embed/') || str_contains($url, 'h5p.com/content/')) {
+                return '[h5p url="' . $url . '"' . $title . ' /]';
+            }
+            if (preg_match('/youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]+)/', $url, $found) === 1) {
+                return '[youtube]https://www.youtube.com/watch?v=' . $found[1] . '[/youtube]';
+            }
+            $ratio = str_contains($match[1], '16by9') ? ' ratio="16:9"' : '';
+            return '[iframe url="' . $url . '"' . $ratio . $title . ' /]';
+        }, $markdown);
+    }
+
+    // Icons written in Docsify (no hidden note): :fas fa-calendar fa-pull-left: → [fa="calendar"][/fa], and the
+    // regular style (far) → Font Awesome 4's -o name, as Grav uses: :far fa-calendar: → [fa="calendar-o"][/fa].
+    // Options such as fa-fw are left out. Font Awesome icons shown as images from api.iconify.design (as in the
+    // Starter Kits' sidebar links) become icons too: Grav can't show those images (it reads ?height=16 as its own
+    // image option).
+    public static function iconsToGrav(string $markdown): string
+    {
+        $markdown = preg_replace_callback('/!\[[^\]]*\]\(https:\/\/api\.iconify\.design\/fa6-(solid|regular|brands)\/([a-z0-9-]+)\.svg[^)\s]*\)/', function ($match) {
+            $name = $match[2];
+            if ($match[1] === 'regular') {
+                $name .= '-o';
+            }
+            return '[fa="' . $name . '"][/fa] ';
+        }, $markdown);
+        return preg_replace_callback('/:(fa[srb]) fa-([a-z0-9-]+)(?: fa-[a-z0-9-]+)*:/', function ($match) {
+            $name = $match[2];
+            if ($match[1] === 'far') {
+                $name .= '-o';
+            }
+            return '[fa="' . $name . '"][/fa]';
+        }, $markdown);
+    }
 }

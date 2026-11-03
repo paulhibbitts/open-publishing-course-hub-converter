@@ -4,12 +4,17 @@
 // Errors come back as plain text (with an error status), which the upload page shows.
 require_once __DIR__ . '/vendor/autoload.php';
 
+use OPG\CourseDocsifyReader;
+use OPG\CourseDocsifyWriter;
+use OPG\CourseGravReader;
+use OPG\CourseGravWriter;
 use OPG\DocsifyReader;
 use OPG\DocsifyWriter;
 use OPG\GravReader;
 use OPG\GravWriter;
 use OPG\Helpers;
 use OPG\Preview;
+use OPG\Site;
 
 set_time_limit(300);
 ini_set('memory_limit', '512M');
@@ -108,6 +113,65 @@ function findPagesFolder(string $dir): string
     return $pagesFolder;
 }
 
+// An Open Course Hub course's pages folder is the one with the Modules page's folder (module.md) in it, wherever it
+// sits in the zip. Returns '' when there isn't one.
+function findCoursePagesFolder(string $dir): string
+{
+    $pagesFolder = '';
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($files as $file) {
+        if ($file->getFilename() !== 'module.md') {
+            continue;
+        }
+        $candidate = dirname($file->getPath());
+        if ($pagesFolder === '' || strlen($candidate) < strlen($pagesFolder)) {
+            $pagesFolder = $candidate;
+        }
+    }
+    return $pagesFolder;
+}
+
+// A Docsify course (one course, laid out like the Docsify Open Course Starter Kit): its own sidebar lists module or
+// week pages (module-01.md, week-1), or its pages were converted from Open Course Hub
+function isDocsifyCourse(string $docsifyFolder): bool
+{
+    $sidebar = $docsifyFolder . '/_sidebar.md';
+    if (is_file($sidebar) && preg_match_all('/\]\((?:\.\/)?(?:module|week)-?[0-9]+(?:\.md)?\)/i', (string)file_get_contents($sidebar)) >= 2) {
+        return true;
+    }
+    foreach (glob($docsifyFolder . '/*.md') as $path) {
+        if (str_contains((string)file_get_contents($path, false, null, 0, 300), 'course-page.md"')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Any course site: Open Course Hub pages (a Modules page, module.md), or a Docsify course – a sidebar listing module or
+// week pages (module-01.md, week-1), or pages converted from a course. Used to tell a MultiCourse site (courses in
+// folders) from a guide site.
+function isCourseSite(string $dir): bool
+{
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($files as $file) {
+        $name = $file->getFilename();
+        if ($name === 'module.md') {
+            return true;
+        }
+        if ($name === '_sidebar.md') {
+            // links such as (module-01.md), (./week-1) or (cpt363-1/module-01) – a folder before the name is fine
+            $moduleLinks = preg_match_all('/\]\((?:[^)\s\/]+\/)*(?:module|week)-?[0-9]+(?:\.md)?\)/i', (string)file_get_contents($file->getPathname()));
+            if ($moduleLinks >= 2) {
+                return true;
+            }
+        }
+        if (str_ends_with($name, '.md') && str_contains((string)file_get_contents($file->getPathname(), false, null, 0, 300), 'course-page.md"')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // A Docsify guide site's folder is the one with home.md (and _sidebar.md files), wherever it sits in the zip:
 // the top, a repo folder, or a Starter Kit's docs/ folder. Returns '' when there isn't one.
 function findDocsifyFolder(string $dir): string
@@ -126,10 +190,19 @@ function findDocsifyFolder(string $dir): string
     return $docsifyFolder;
 }
 
-// Saves conversion-notes.txt: what was converted, anything to check, and any tips
-function writeNotes(string $file, array $guides, array $warnings, array $tips = []): void
+// Saves conversion-notes.txt: what was converted, anything to check, and any tips. $course: a course's modules and
+// menu pages, listed instead of guides.
+function writeNotes(string $file, array $guides, array $warnings, array $tips = [], ?Site $course = null): void
 {
-    $notes = ['Open Publishing Guides Converter – conversion notes', '', 'Guides converted: ' . count($guides)];
+    $notes = ['Open Publishing Course Hub Converter – conversion notes', ''];
+    if ($course !== null) {
+        $notes[] = 'Course converted: ' . count($course->modulesPage->children) . ' modules and ' . count($course->coursePages) . ' menu pages';
+        foreach ($course->modulesPage->children as $module) {
+            $notes[] = '- ' . $module->title();
+        }
+    } else {
+        $notes[] = 'Guides converted: ' . count($guides);
+    }
     foreach ($guides as $guide) {
         $pageCount = 0;
         foreach ($guide->children as $section) {
@@ -227,7 +300,7 @@ function downloadGitHubZip(array $repo, string $target): void
     curl_setopt($download, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
     curl_setopt($download, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
     curl_setopt($download, CURLOPT_TIMEOUT, 120);
-    curl_setopt($download, CURLOPT_USERAGENT, 'Open Publishing Guides Converter');
+    curl_setopt($download, CURLOPT_USERAGENT, 'Open Publishing Course Hub Converter');
     // stop a download that grows past the 200 MB limit
     curl_setopt($download, CURLOPT_NOPROGRESS, false);
     curl_setopt($download, CURLOPT_PROGRESSFUNCTION, 'stopLargeDownloads');
@@ -342,17 +415,51 @@ if ($repo !== null) {
 }
 
 // ---- the conversion ----
-// A repo address is a Docsify guide site, converted to Grav; an uploaded zip is Grav pages, converted to Docsify.
+// A repo address is a Docsify guide site or course, converted to Grav; an uploaded zip is Grav pages (Open Publishing
+// Space guides or an Open Course Hub course), converted to Docsify.
+
+$course = null;
 
 if ($repo !== null) {
     $docsifyFolder = findDocsifyFolder($searchFolder);
     if ($docsifyFolder === '') {
         if (findPagesFolder($searchFolder) !== '') {
-            fail('That repo has Grav pages, not a Docsify site. To convert them to Docsify, zip its pages folder and use "Grav guides to Docsify".');
+            fail('That repo has Grav pages, not a Docsify site. To convert them to Docsify, zip its pages folder and use "Grav to Docsify".');
         }
-        fail('No Docsify guide site was found in that repo. It needs a home.md, and a _sidebar.md with each guide\'s reading order.');
+        fail('No Docsify guide site or course was found in that repo. It needs a home.md, and a _sidebar.md with the reading order or modules.');
     }
     $direction = 'grav';
+    if (isDocsifyCourse($docsifyFolder)) {
+        // a course: Open Course Hub pages
+        $reader = new CourseDocsifyReader();
+        $course = $reader->read($docsifyFolder);
+        (new CourseGravWriter())->write($course, $work . '/out/pages');
+        $guides = [];
+        $warnings = array_values(array_unique($reader->notes));
+        $tips = ['copy these pages into your Open Course Hub site\'s user/pages folder, in place of its home, modules, sidebar and footer folders'];
+    }
+} elseif (findCoursePagesFolder($searchFolder) !== '') {
+    // an Open Course Hub course: a Docsify course, laid out like the Docsify Open Course Starter Kit
+    $modulesPages = new RegexIterator(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($searchFolder, FilesystemIterator::SKIP_DOTS)), '/\/module\.md$/');
+    if (iterator_count($modulesPages) > 1) {
+        fail('That zip has several courses, like an Open MultiCourse Hub site. This converter works with one course (Open Course Hub), or with guides.');
+    }
+    $direction = 'docsify';
+    $pagesFolder = findCoursePagesFolder($searchFolder);
+    $reader = new CourseGravReader();
+    $course = $reader->read($pagesFolder);
+    $writer = new CourseDocsifyWriter();
+    $writer->write($course, $pagesFolder, $work . '/out', $siteUrl);
+    $guides = [];
+    $warnings = array_values(array_unique(array_merge($reader->notes, $writer->warnings)));
+    $tips = ['to use your Grav site\'s favicon, copy it from user/themes/mytheme/images/favicon/ into the Docsify site and add '
+        . '&loadFavicon= with its file name (such as favicon.png) to the Docsify-This link'];
+}
+
+if ($repo !== null && $course === null) {
+    if (isCourseSite($docsifyFolder)) {
+        fail('That repo has courses in folders, like the Docsify Open MultiCourse Starter Kit. This converter works with one course, or with guides.');
+    }
     $reader = new DocsifyReader();
     $site = $reader->read($docsifyFolder);
     if (count($site->guides) === 0) {
@@ -370,13 +477,13 @@ if ($repo !== null) {
         $homePage = '/' . $site->guidesPage->slug();
     }
     $tips = ['to start your site on ' . $homeTitle . ', set Home Page to ' . $homePage . ' in Configuration → System'];
-} else {
+} elseif ($course === null) {
     $pagesFolder = findPagesFolder($searchFolder);
     if ($pagesFolder === '') {
         if (findDocsifyFolder($searchFolder) !== '') {
-            fail('That zip has a Docsify site, not Grav pages. To convert it to Grav, enter its GitHub repo address under "Docsify guides to Grav".');
+            fail('That zip has a Docsify site, not Grav pages. To convert it to Grav, enter its GitHub repo address under "Docsify to Grav".');
         }
-        fail('No Open Publishing Space guides were found in that zip. Each guide is a folder with a section-list.md page, inside your site\'s user/pages folder.');
+        fail('No Open Publishing Space guides or Open Course Hub modules were found in that zip. Zip your site\'s user/pages folder: each guide is a folder with a section-list.md page, and a course has a Modules page (module.md).');
     }
     $direction = 'docsify';
     $site = (new GravReader())->read($pagesFolder);
@@ -393,7 +500,7 @@ if ($repo !== null) {
         'to use your Grav site\'s favicon, copy it from user/themes/mytheme/images/favicon/ into the Docsify site and add '
         . '&loadFavicon= with its file name (such as favicon.png) to the Docsify-This link'];
 }
-writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings, $tips ?? []);
+writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings, $tips ?? [], $course);
 
 // ---- a preview: sample pages instead of the zip ----
 
@@ -401,7 +508,7 @@ if ($previewMode) {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-cache, no-store');
     $preview = new Preview($work . '/out');
-    $pages = $preview->samplePages($direction);
+    $pages = $preview->samplePages($direction, $course !== null);
     if (count($pages) === 0) {
         fail('There were no pages to preview.');
     }
@@ -428,5 +535,8 @@ header('Pragma: no-cache');
 // the page reads these to say what happened
 header('X-Converted-To: ' . $direction);
 header('X-Guides-Converted: ' . count($guides));
+if ($course !== null) {
+    header('X-Modules-Converted: ' . count($course->modulesPage->children));
+}
 header('X-Warnings: ' . count($warnings));
 readfile($resultZip);

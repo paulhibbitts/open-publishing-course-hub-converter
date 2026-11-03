@@ -47,6 +47,8 @@ class DocsifyWriter
         }
         if (!$single) {
             $this->writeGuidesPage($site->guidesPage, $cards);
+            // a sidebar file with only a comment: Docsify looks for one beside the Guides page (no 404), and shows no sidebar
+            $this->writeFile('_sidebar.md', '<!-- No sidebar on the Guides page: each guide folder has its own _sidebar.md -->');
         }
         // The top navbar: empty on the Guides page (each guide has its own), or a single guide's menu pages.
         // A Starter Kit always loads it, and an empty one takes no space; Docsify-This only loads it with loadNavbar.

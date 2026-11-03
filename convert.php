@@ -126,8 +126,8 @@ function findDocsifyFolder(string $dir): string
     return $docsifyFolder;
 }
 
-// Saves conversion-notes.txt: what was converted, and anything to check
-function writeNotes(string $file, array $guides, array $warnings): void
+// Saves conversion-notes.txt: what was converted, anything to check, and any tips
+function writeNotes(string $file, array $guides, array $warnings, array $tips = []): void
 {
     $notes = ['Open Publishing Guides Converter – conversion notes', '', 'Guides converted: ' . count($guides)];
     foreach ($guides as $guide) {
@@ -145,6 +145,10 @@ function writeNotes(string $file, array $guides, array $warnings): void
         }
     } else {
         $notes[] = 'Nothing to check.';
+    }
+    foreach ($tips as $tip) {
+        $notes[] = '';
+        $notes[] = 'Tip: ' . $tip;
     }
     file_put_contents($file, implode("\n", $notes) . "\n");
 }
@@ -375,8 +379,11 @@ if ($repo !== null) {
         $guides = array_slice($site->guides, 0, 1);
     }
     $warnings = array_values(array_unique($writer->warnings));
+    // the converter doesn't know the site's name (Grav keeps it outside the pages folder), so it can't add the site title
+    $tips = ['to show your site\'s name at the top of pages without a sidebar (and on phones), add this as the first line of '
+        . 'each _navbar.md: - [Your Site Name](home.md ":class=site-title")'];
 }
-writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings);
+writeNotes($work . '/out/conversion-notes.txt', $guides, $warnings, $tips ?? []);
 
 // ---- a preview: sample pages instead of the zip ----
 

@@ -150,13 +150,15 @@ class DocsifyFirstReader
         }
     }
 
-    // Folders with their own _sidebar.md are guides
+    // Folders with their own _sidebar.md are guides. A sidebar without links (only a comment, so a page such as About
+    // has no sidebar and no 404) doesn't make a guide.
     private function guideFolders(): array
     {
         $folders = [];
         foreach (scandir($this->dir) as $name) {
             $isHidden = str_starts_with($name, '.');
-            if (!$isHidden && is_dir($this->dir . '/' . $name) && is_file($this->dir . '/' . $name . '/_sidebar.md')) {
+            $sidebarFile = $this->dir . '/' . $name . '/_sidebar.md';
+            if (!$isHidden && is_dir($this->dir . '/' . $name) && is_file($sidebarFile) && count($this->links(file_get_contents($sidebarFile))) > 0) {
                 $folders[] = $name;
             }
         }

@@ -12,6 +12,7 @@ namespace OPG;
 //     (![alt](image.jpg ':class=banner-image')), as Docsify ignores Grav's image options
 //   [safe-email …]address[/safe-email] → an email link
 //   [button label="…" url="…" /] → a link button, as in the Starter Kits ([label](url ':class=button'))
+//   [h5p url="…" /] → an H5P iframe and its resizer script, as in the Starter Kits
 //   [fa="calendar-o"][/fa] → a Font Awesome icon in Docsify-This's own form (:far fa-calendar fa-fw:), kept on its
 //     line, since icons sit inside headings and links
 class Embeds
@@ -32,10 +33,12 @@ class Embeds
             '/\[linkpreviewcard((?: [^\]]*)?)\s*\/?\]/' => 'linkpreview',
             '/\[safe-email((?: [^\]]*)?)\](.*?)\[\/safe-email\]/' => 'email',
             '/\[button((?: [^\]]*)?)\s*\/\]/' => 'button',
+            '/\[h5p((?: [^\]]*)?)\s*\/\]/' => 'h5p',
             '/!\[([^\]]*)\]\(([^)\s?]+\?cropZoom=[0-9]+,[0-9]+)\)/' => 'banner',
         ];
         foreach ($patterns as $pattern => $kind) {
             $text = $markdown;
+            // PREG_OFFSET_CAPTURE (below): each match is [text, position]
             $markdown = preg_replace_callback($pattern, function ($match) use ($kind, $text) {
                 $address = '';
                 if (isset($match[2])) {
@@ -50,14 +53,26 @@ class Embeds
                     return $match[0][0];
                 }
                 // inside a > quote (a callout), the note and the HTML keep the > so they stay in the box
-                $lineStart = strrpos(substr($text, 0, $match[0][1]), "\n");
-                $line = substr($text, $lineStart === false ? 0 : $lineStart + 1, 2);
-                $quote = str_starts_with($line, '>') ? '> ' : '';
+                $quote = '';
+                if (self::isInQuote($text, $match[0][1])) {
+                    $quote = '> ';
+                }
                 // the note and the HTML each on a line of their own, as Docsify shows HTML that starts a line
                 return "\n" . $quote . '<!-- ' . self::NOTE . ': ' . $match[0][0] . " -->\n" . $quote . $html . "\n" . $quote;
             }, $markdown, -1, $count, PREG_OFFSET_CAPTURE);
         }
         return $markdown;
+    }
+
+    // Whether $position is on a line starting with > (a quote or callout)
+    private static function isInQuote(string $text, int $position): bool
+    {
+        $before = substr($text, 0, $position);
+        $lineStart = strrpos($before, "\n");
+        if ($lineStart === false) {
+            $lineStart = -1;
+        }
+        return substr($text, $lineStart + 1, 1) === '>';
     }
 
     private static function html(string $kind, array $attributes, string $address): string
@@ -81,11 +96,25 @@ class Embeds
                 return $url === '' ? '' : self::embedlyCard($url);
             case 'email':
                 return '[' . $address . '](mailto:' . $address . ')';
+            case 'h5p':
+                // only url="…" works outside Grav ([h5p id="…"] needs the site's settings)
+                $url = $attributes['url'] ?? '';
+                if ($url === '') {
+                    return '';
+                }
+                return self::h5p($url, $title !== '' ? $title : 'Interactive content');
             case 'button':
                 $url = $attributes['url'] ?? '';
                 return $url === '' ? '' : '[' . ($attributes['label'] ?? $url) . '](' . $url . ' \':class=button\')';
         }
         return '';
+    }
+
+    // An H5P activity, as in the Starter Kits: its iframe and H5P's resizer script
+    private static function h5p(string $url, string $title): string
+    {
+        return '<iframe src="' . htmlspecialchars($url) . '" title="' . htmlspecialchars($title) . '" width="100%" height="400" frameborder="0" allowfullscreen="allowfullscreen"></iframe>'
+            . '<script src="https://h5p.org/sites/all/modules/h5p/library/js/h5p-resizer.js" charset="UTF-8"></script>';
     }
 
     private static function embedlyCard(string $url): string
@@ -185,8 +214,10 @@ class Embeds
     // video-container-16by9, otherwise Open Matter's usual 4:3)
     public static function iframesToGrav(string $markdown): string
     {
+        // an iframe, maybe in a <div>, maybe followed by H5P's resizer script
         $pattern = '/(?:<div class="([a-z0-9 -]*)">\s*)?<iframe\s([^>]*)>\s*<\/iframe>(?:\s*<\/div>)?(\s*<script [^>]*h5p-resizer[^>]*><\/script>)?/i';
         return preg_replace_callback($pattern, function ($match) {
+            // the iframe's src and title
             if (preg_match('/\ssrc="([^"]+)"/i', ' ' . $match[2], $found) !== 1) {
                 return $match[0];
             }

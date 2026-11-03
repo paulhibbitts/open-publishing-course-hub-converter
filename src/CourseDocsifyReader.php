@@ -3,10 +3,9 @@ namespace OPG;
 
 use Symfony\Component\Yaml\Yaml;
 
-// Reads a Docsify course back into Open Course Hub pages. A course written by this converter carries hidden notes
-// with each page's Grav file and settings, so it goes back unchanged (titles, descriptions and text edited in Docsify
-// included). A course made in Docsify, laid out like the Docsify Open Course Starter Kit (home.md, a page per module
-// in _sidebar.md, menu pages in _navbar.md, contact.md, _footer.md, images/), is turned into Open Course Hub pages.
+// Reads a Docsify course back into Open Course Hub pages. A course this converter made goes back unchanged, using its
+// hidden notes (with any edits made in Docsify); a course made in Docsify, laid out like the Docsify Open Course
+// Starter Kit, is turned into Open Course Hub pages.
 class CourseDocsifyReader
 {
     // things worth checking, for conversion-notes.txt
@@ -47,12 +46,17 @@ class CourseDocsifyReader
         // every page's Grav address first, for the links between them
         foreach ($notedPages as $file => $note) {
             $gravFile = $note['where']['file'];
+            $folder = dirname($gravFile);
             if (basename($gravFile) === 'course-page.md') {
-                $this->addresses[$file] = '/' . Helpers::slugFromFolder(basename(dirname(dirname($gravFile)))) . '/' . Helpers::slugFromFolder(basename(dirname($gravFile)));
+                // a module: '03.modules/02.module-01/course-page.md' → '/modules/module-01'
+                $moduleSlug = Helpers::slugFromFolder(basename($folder));
+                $modulesSlug = Helpers::slugFromFolder(basename(dirname($folder)));
+                $this->addresses[$file] = '/' . $modulesSlug . '/' . $moduleSlug;
             } elseif ($file === 'home.md') {
                 $this->addresses[$file] = '/';
-            } elseif (!str_contains(dirname($gravFile), '/') && Helpers::isNumbered(dirname($gravFile))) {
-                $this->addresses[$file] = '/' . Helpers::slugFromFolder(dirname($gravFile));
+            } elseif (!str_contains($folder, '/') && Helpers::isNumbered($folder)) {
+                // a menu page, in a numbered folder at the top: '05.schedule/page.md' → '/schedule'
+                $this->addresses[$file] = '/' . Helpers::slugFromFolder($folder);
             }
         }
 
@@ -61,7 +65,7 @@ class CourseDocsifyReader
             $gravFile = $note['where']['file'];
             if (basename($gravFile) === 'module.md') {
                 // the Modules page's note: in _sidebar.md, or in home.md when the course has no home page
-                $site->modulesPage = $this->notedPage('modules', $note, '', []);
+                $site->modulesPage = $this->notedPage('modules', $note, '');
                 $site->modulesPage->body = $note['where']['body'] ?? '';
                 continue;
             }
@@ -83,7 +87,7 @@ class CourseDocsifyReader
             if ($kind === 'sidebar') {
                 $rest = $this->withSidebarGroups($rest);
             }
-            $page = $this->notedPage($kind, $note, $this->authorText($rest, $note), []);
+            $page = $this->notedPage($kind, $note, $this->authorText($rest, $note));
             $this->addNotedImages($page, $note);
             if ($kind === 'menu') {
                 $this->updateTitle($page, $note['rest'], $this->navbar[$file] ?? '');
@@ -103,7 +107,10 @@ class CourseDocsifyReader
         }
         ksort($modules, SORT_NATURAL);
         $site->modulesPage->children = array_values($modules);
-        usort($site->coursePages, fn($a, $b) => strnatcmp($a->folder, $b->folder));
+        // menu pages in Grav's order (05.schedule, 06.topics …)
+        usort($site->coursePages, function ($a, $b) {
+            return strnatcmp($a->folder, $b->folder);
+        });
         $this->noteOtherPages(array_keys($notedPages));
         return $site;
     }
@@ -112,28 +119,48 @@ class CourseDocsifyReader
     // have been edited in Docsify), and its text
     private function readNotedModule(string $file, array $note): Page
     {
-        $page = $this->notedPage('module', $note, $this->authorText($note['rest'], $note), []);
+        $page = $this->notedPage('module', $note, $this->authorText($note['rest'], $note));
         $this->addNotedImages($page, $note);
         $changes = [];
         $label = $this->sidebar['modules'][$file] ?? '';
         if ($label !== '' && $label !== $page->title()) {
             $changes['title'] = $label;
         }
+        // the page's # heading, in the converter's generated block at the top
         if (preg_match('/<!-- grav:gen -->\n.*?^# (.+?)$.*?<!-- \/grav:gen -->/sm', $note['rest'], $found) === 1) {
             $heading = trim($found[1]);
-            $shown = $page->setting('description') !== '' ? $page->setting('description') : $page->title();
-            if ($page->setting('description') !== '' && $heading !== $shown) {
-                $changes['description'] = $heading;
-            } elseif ($page->setting('description') === '' && $heading !== $shown && !isset($changes['title'])) {
-                $changes['title'] = $heading;
+            // the heading shows the description, or the title when there's none
+            $hasDescription = $page->setting('description') !== '';
+            $shown = $page->title();
+            if ($hasDescription) {
+                $shown = $page->setting('description');
             }
-            // a first heading in the text that repeated the old one (hidden in Docsify) repeats the new one
             if ($heading !== $shown) {
-                $page->body = preg_replace('/^(\s*#{1,6}[ \t]+[*_]*)' . preg_quote($shown, '/') . '(?=[*_]*[ \t]*(\n|$))/', '${1}' . addcslashes($heading, '\\$'), $page->body, 1);
+                if ($hasDescription) {
+                    $changes['description'] = $heading;
+                } elseif (!isset($changes['title'])) {
+                    $changes['title'] = $heading;
+                }
+                $page->body = $this->withNewFirstHeading($page->body, $shown, $heading);
             }
         }
         $this->changeSettings($page, $changes);
         return $page;
+    }
+
+    // A first heading that repeated the old text gets the new text: '## **Old**' → '## **New**'
+    private function withNewFirstHeading(string $body, string $old, string $new): string
+    {
+        $lines = explode("\n", $body);
+        // the first line with text
+        $first = 0;
+        while ($first < count($lines) && trim($lines[$first]) === '') {
+            $first++;
+        }
+        if ($first < count($lines) && str_starts_with(ltrim($lines[$first]), '#') && str_contains($lines[$first], $old)) {
+            $lines[$first] = str_replace($old, $new, $lines[$first]);
+        }
+        return implode("\n", $lines);
     }
 
     // The home page and its parts: each part starts with its own note and the page-inject line that shows it, and
@@ -141,8 +168,9 @@ class CourseDocsifyReader
     // end); the home page's own text is everything else
     private function readNotedHome(array $note): Page
     {
-        $home = $this->notedPage('home', $note, '', []);
+        $home = $this->notedPage('home', $note, '');
         $parts = [];
+        // a part: its note and text, up to <!-- grav:/part --> (or the next note)
         $pattern = '/<!-- grav: \{.*?\n-->\n(.*?)(?:<!-- grav:\/part -->|(?=<!-- grav: \{)|$)/s';
         $ownText = preg_replace_callback($pattern, function ($match) use (&$parts) {
             $partNote = Helpers::readGravNote($match[0]);
@@ -150,7 +178,7 @@ class CourseDocsifyReader
                 return $match[0];
             }
             $text = str_replace($inject[0], '', str_replace('<!-- grav:/part -->', '', $partNote['rest']));
-            $part = $this->notedPage('home-part', $partNote, $this->authorText($text, $partNote), []);
+            $part = $this->notedPage('home-part', $partNote, $this->authorText($text, $partNote));
             $this->addNotedImages($part, $partNote);
             $parts[] = $part;
             return "\n" . $inject[1] . "\n";
@@ -163,7 +191,7 @@ class CourseDocsifyReader
     }
 
     // A page from its note: its Grav file, its front matter exactly as it was, and its text
-    private function notedPage(string $kind, array $note, string $body, array $images): Page
+    private function notedPage(string $kind, array $note, string $body): Page
     {
         $gravFile = $note['where']['file'];
         $page = new Page($kind, dirname($gravFile), basename($gravFile));
@@ -222,7 +250,11 @@ class CourseDocsifyReader
                     }
                 }
             }
-            $source = $chosen === '' ? '' : Helpers::imageInside($this->dir, $this->dir . '/' . $chosen);
+            if ($chosen === '') {
+                continue;
+            }
+            // only an image inside the site is copied
+            $source = Helpers::imageInside($this->dir, $this->dir . '/' . $chosen);
             if ($source === '') {
                 continue;
             }
@@ -241,8 +273,12 @@ class CourseDocsifyReader
             if ($group === null) {
                 return '';
             }
+            // the group's Grav layout, e.g. "## {heading}\n{link}  \n{link}" (the usual one if links were added or removed)
             $saved = json_decode($match[1], true);
-            $layout = is_array($saved) ? (string)($saved['layout'] ?? '') : '';
+            $layout = '';
+            if (is_array($saved) && isset($saved['layout'])) {
+                $layout = (string)$saved['layout'];
+            }
             if ($layout === '' || substr_count($layout, '{link}') !== count($group['links'])) {
                 return $this->groupText($group);
             }
@@ -313,14 +349,17 @@ class CourseDocsifyReader
         $unlisted = [];
         foreach (glob($this->dir . '/*.md') as $path) {
             $file = basename($path);
-            if (preg_match('/^(module|week)-?[0-9]+\.md$/i', $file) === 1 && !in_array($file, $moduleFiles, true) && !isset($this->navbar[$file])) {
+            // module-05.md, week-5.md …
+            $isModulePage = preg_match('/^(module|week)-?[0-9]+\.md$/i', $file) === 1;
+            if ($isModulePage && !in_array($file, $moduleFiles, true) && !isset($this->navbar[$file])) {
                 $moduleFiles[] = $file;
                 $unlisted[] = $file;
             }
         }
-        if (count($unlisted) > 0) {
-            $this->notes[] = implode(', ', $unlisted) . ' ' . (count($unlisted) === 1 ? 'isn\'t' : 'aren\'t')
-                . ' in the sidebar, so ' . (count($unlisted) === 1 ? 'it\'s a hidden module' : 'they\'re hidden modules') . ' (they open from links, but aren\'t listed)';
+        if (count($unlisted) === 1) {
+            $this->notes[] = $unlisted[0] . ' isn\'t in the sidebar, so it\'s a hidden module (it opens from links, but isn\'t listed)';
+        } elseif (count($unlisted) > 1) {
+            $this->notes[] = implode(', ', $unlisted) . ' aren\'t in the sidebar, so they\'re hidden modules (they open from links, but aren\'t listed)';
         }
         $menuFiles = [];
         foreach ($this->navbar as $file => $label) {
@@ -395,14 +434,18 @@ class CourseDocsifyReader
         $lines = explode("\n", str_replace("\r\n", "\n", $this->readFile($file)));
         $i = $this->skipBlankLines($lines, 0);
         $headerImage = null;
+        // a banner at the top: ![Alt text](images/photo.jpg ':class=banner-image')
         if (isset($lines[$i]) && preg_match('/^!\[([^\]]*)\]\(([^)\s]+)\s+[\'"][^\'"]*:class=banner-image[^\'"]*[\'"]\)\s*$/', $lines[$i], $found) === 1) {
             $headerImage = $found;
             $i = $this->skipBlankLines($lines, $i + 1);
         }
+        // its credit: <small>Photo: [Name](https://link)</small>, or <small>Photo: Name</small>
         if ($headerImage !== null && isset($lines[$i]) && preg_match('/^<small>Photo: (?:\[(.+?)\]\((.+?)\)|(.+?))<\/small>\s*$/', $lines[$i], $found) === 1) {
-            $settings['header_image_credit'] = $found[1] !== '' ? $found[1] : ($found[3] ?? '');
-            if ($found[2] !== '') {
+            if ($found[1] !== '') {
+                $settings['header_image_credit'] = $found[1];
                 $settings['header_image_creditlink'] = $found[2];
+            } else {
+                $settings['header_image_credit'] = $found[3];
             }
             $i = $this->skipBlankLines($lines, $i + 1);
         }
@@ -413,6 +456,7 @@ class CourseDocsifyReader
             }
             $i = $this->skipBlankLines($lines, $i + 1);
         }
+        // a Learning Objectives box: > [!TIP] then > **Learning Objectives**, then its lines
         if (isset($lines[$i]) && isset($lines[$i + 1]) && str_starts_with($lines[$i], '> [!') && trim($lines[$i + 1]) === '> **Learning Objectives**') {
             $objectives = [];
             $j = $i + 2;
@@ -530,6 +574,7 @@ class CourseDocsifyReader
                 $this->addNote('a sidebar has HTML (such as a form or button), which wasn\'t converted');
                 continue;
             }
+            // a module: - [Week 1](module-01)
             if (preg_match('/^[-*] \[([^\]]+)\]\(([^)\s]+)\)\s*$/', $line, $found) === 1) {
                 $file = $this->siteFile($found[2]);
                 if ($file !== '') {
@@ -539,14 +584,22 @@ class CourseDocsifyReader
                 }
                 $group = null;
             } elseif (preg_match('/^[-*] (?:\*\*)?([^*\[]+?)(?:\*\*)?\s*$/', $line, $found) === 1) {
+                // a group's heading: - **LMS Links**
                 $sidebar['groups'][] = ['heading' => $found[1], 'links' => []];
                 $group = count($sidebar['groups']) - 1;
             } elseif ($group !== null && preg_match('/^\s+[-*] (\[.+\]\([^)]+\))\s*$/', $line, $found) === 1) {
+                // a link in the group, indented:   - [Calendar](https://…)
                 $sidebar['groups'][$group]['links'][] = $found[1];
             }
         }
         // a group without any links isn't kept
-        $sidebar['groups'] = array_values(array_filter($sidebar['groups'], fn($g) => count($g['links']) > 0));
+        $groupsWithLinks = [];
+        foreach ($sidebar['groups'] as $group) {
+            if (count($group['links']) > 0) {
+                $groupsWithLinks[] = $group;
+            }
+        }
+        $sidebar['groups'] = $groupsWithLinks;
         return $sidebar;
     }
 
@@ -580,7 +633,10 @@ class CourseDocsifyReader
         if (!str_ends_with($file, '.md')) {
             $file .= '.md';
         }
-        return is_file($this->dir . '/' . $file) ? $file : '';
+        if (!is_file($this->dir . '/' . $file)) {
+            return '';
+        }
+        return $file;
     }
 
     // Pages of the site that weren't converted (pages for the LMS, a cover page …)
@@ -610,7 +666,10 @@ class CourseDocsifyReader
     private function readFile(string $file): string
     {
         $path = $this->dir . '/' . $file;
-        return is_file($path) ? (string)file_get_contents($path) : '';
+        if (!is_file($path)) {
+            return '';
+        }
+        return (string)file_get_contents($path);
     }
 
     private function skipBlankLines(array $lines, int $i): int

@@ -131,6 +131,19 @@ function findCoursePagesFolder(string $dir): string
     return $pagesFolder;
 }
 
+// How many files called $name there are in $dir and its folders
+function countFiles(string $dir, string $name): int
+{
+    $count = 0;
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($files as $file) {
+        if ($file->getFilename() === $name) {
+            $count++;
+        }
+    }
+    return $count;
+}
+
 // A Docsify course (one course, laid out like the Docsify Open Course Starter Kit): its own sidebar lists module or
 // week pages (module-01.md, week-1), or its pages were converted from Open Course Hub
 function isDocsifyCourse(string $docsifyFolder): bool
@@ -440,8 +453,7 @@ if ($repo !== null) {
     }
 } elseif (findCoursePagesFolder($searchFolder) !== '') {
     // an Open Course Hub course: a Docsify course, laid out like the Docsify Open Course Starter Kit
-    $modulesPages = new RegexIterator(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($searchFolder, FilesystemIterator::SKIP_DOTS)), '/\/module\.md$/');
-    if (iterator_count($modulesPages) > 1) {
+    if (countFiles($searchFolder, 'module.md') > 1) {
         fail('That zip has several courses, like an Open MultiCourse Hub site. This converter works with one course (Open Course Hub), or with guides.');
     }
     $direction = 'docsify';

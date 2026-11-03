@@ -58,19 +58,34 @@ class Preview
         } else {
             $samples = ['Home page' => 'home.md'];
             // the sidebar's first two modules and the navbar's first page
-            $sidebar = is_file($this->out . '/_sidebar.md') ? file_get_contents($this->out . '/_sidebar.md') : '';
+            $sidebar = $this->fileText('_sidebar.md');
             preg_match_all('/^- \[[^\]]+\]\(([^)\s]+\.md)\)/m', $sidebar, $links);
             foreach (array_slice($links[1], 0, 2) as $index => $module) {
                 $samples['Module ' . ($index + 1)] = $module;
             }
-            $navbar = is_file($this->out . '/_navbar.md') ? file_get_contents($this->out . '/_navbar.md') : '';
+            $navbar = $this->fileText('_navbar.md');
             if (preg_match('/\]\(([^)\s]+\.md)\)/', $navbar, $found) === 1) {
                 $samples['Menu page'] = $found[1];
             }
             $samples['Sidebar'] = '_sidebar.md';
         }
         // only pages that are there
-        return array_filter($samples, fn($path) => $path !== '' && is_file($this->out . '/' . $path));
+        $found = [];
+        foreach ($samples as $label => $path) {
+            if ($path !== '' && is_file($this->out . '/' . $path)) {
+                $found[$label] = $path;
+            }
+        }
+        return $found;
+    }
+
+    // A converted file's text, or '' when there isn't one
+    private function fileText(string $path): string
+    {
+        if (!is_file($this->out . '/' . $path)) {
+            return '';
+        }
+        return (string)file_get_contents($this->out . '/' . $path);
     }
 
     // In a Grav pages folder: the Guides List page, then the first guide's Section List page, section, page and menu page

@@ -1,11 +1,9 @@
 <?php
 namespace OPG;
 
-// Writes the modules of an Open Course Hub course as a Docsify course, laid out like the Docsify Open Course Starter
-// Kit: every page at the site's top – home.md (the course home), a page per module and the menu pages – with images in
-// images/, the modules (and the sidebar's link lists, such as the LMS links) in _sidebar.md, the menu pages and Contact
-// in _navbar.md, and the footer in _footer.md. The same Markdown pages work in a repo shown by Docsify-This and in a
-// Starter Kit's docs/ folder. Hidden notes keep what's needed to go back to the same Grav pages (CourseDocsifyReader).
+// Writes an Open Course Hub course as a Docsify course, laid out like the Docsify Open Course Starter Kit: home.md, a
+// page per module and menu page, images/, _sidebar.md (modules and LMS links), _navbar.md and _footer.md. Hidden notes
+// keep what's needed to go back to the same Grav pages (see CourseDocsifyReader).
 class CourseDocsifyWriter
 {
     // Links that only work on the Grav site, and anything else worth checking (for conversion-notes.txt)
@@ -287,6 +285,10 @@ class CourseDocsifyWriter
             $lines = [Helpers::gravNote($modulesPage, array_merge($extra, self::spacing($modulesPage))), ''];
         }
         foreach ($modulesPage->children as $module) {
+            // hidden or unpublished modules aren't listed
+            if (($module->meta['visible'] ?? true) === false || ($module->meta['published'] ?? true) === false) {
+                continue;
+            }
             $lines[] = '- [' . $module->title() . '](' . $module->slug() . '.md)';
         }
         $this->writeFile('_sidebar.md', implode("\n", array_merge($lines, $groups)));

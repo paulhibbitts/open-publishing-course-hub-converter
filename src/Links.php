@@ -90,9 +90,11 @@ class Links
             if (isset($match[2]) && $match[2] !== '') {
                 $anchor = '?id=' . substr($match[2], 1);
             }
-            // only a link written differently from the page's usual address (the first one in $map) is kept
-            $written = $match[1] . ($match[2] ?? '');
-            if ($originals !== null && $written !== array_search($map[$path], $map, true) . ($match[2] ?? '')) {
+            // kept only when written differently from the usual address (e.g. ../modules/module-02)
+            $heading = $match[2] ?? '';
+            $written = $match[1] . $heading;
+            $usualAddress = array_search($map[$path], $map, true) . $heading;
+            if ($originals !== null && $written !== $usualAddress) {
                 $originals[] = [$map[$path] . $anchor, $written];
             }
             return '](' . $map[$path] . $anchor . ($match[3] ?? '') . ')';
@@ -105,6 +107,7 @@ class Links
     // (Docsify file => Grav address).
     public static function mapToGrav(string $markdown, array $addresses, array $originals = []): string
     {
+        // ](page) or ](page.md?id=heading), maybe with a "title" or ':option'
         $pattern = '/\]\(((?:\.\/)?[A-Za-z0-9_\/-]+(?:\.[A-Za-z0-9_-]+)*?)(\.md)?(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/';
         return preg_replace_callback($pattern, function ($match) use ($addresses, &$originals) {
             $file = preg_replace('/^\.\//', '', $match[1]) . '.md';

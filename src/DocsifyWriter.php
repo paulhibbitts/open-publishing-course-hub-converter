@@ -449,6 +449,7 @@ class DocsifyWriter
     {
         $codeParts = [];
         $markdown = Helpers::hideCode($markdown, $codeParts);
+        $markdown = Embeds::toDocsify($markdown);
         $markdown = Callouts::toDocsify($markdown);
         $markdown = Links::newTabToDocsify($markdown);
         $markdown = Links::toDocsify($markdown, $this->guideSlugs, $this->single);

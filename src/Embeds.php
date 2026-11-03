@@ -1,0 +1,158 @@
+<?php
+namespace OPG;
+
+// Embed shortcodes (Grav) ↔ HTML that Docsify shows as it is. Each embed keeps its shortcode in a hidden note on the
+// line above it, so the way back gives the exact shortcode again.
+//   [googleslides title="…"]address[/googleslides], [iframe url="…"/], [youtube]address[/youtube] → a responsive
+//     iframe, as in the Docsify course template (<div class="video-container-16by9"><iframe …></iframe></div>)
+//   [embedly]address[/embedly] → an Embedly card (<a class="embedly-card" …>), which Docsify-This and the kits load
+//   [pdf title="…"]address[/pdf], [linkpreviewcard url="…"] → a link
+//   [safe-email …]address[/safe-email] → an email link
+//   [button label="…" url="…" /] → a link button, as in the Starter Kits ([label](url ':class=button'))
+//   [fa="calendar-o"][/fa] → a Font Awesome icon in Docsify-This's own form (:far fa-calendar fa-fw:), kept on its
+//     line, since icons sit inside headings and links
+class Embeds
+{
+    private const NOTE = 'grav-embed';
+
+    // ---- Grav → Docsify ----
+
+    public static function toDocsify(string $markdown): string
+    {
+        $markdown = preg_replace_callback('/\[fa=?"?([a-z0-9-]+)"?[^\]]*\](?:\[\/fa\])?/', [self::class, 'icon'], $markdown);
+        $patterns = [
+            '/\[googleslides((?: [^\]]*)?)\](.*?)\[\/googleslides\]/' => 'slides',
+            '/\[youtube((?: [^\]]*)?)\](.*?)\[\/youtube\]/' => 'youtube',
+            '/\[iframe((?: [^\]]*)?)\s*\/\]/' => 'iframe',
+            '/\[embedly((?: [^\]]*)?)\](.*?)\[\/embedly\]/' => 'embedly',
+            '/\[pdf((?: [^\]]*)?)\](.*?)\[\/pdf\]/' => 'pdf',
+            '/\[linkpreviewcard((?: [^\]]*)?)\s*\/?\]/' => 'linkpreview',
+            '/\[safe-email((?: [^\]]*)?)\](.*?)\[\/safe-email\]/' => 'email',
+            '/\[button((?: [^\]]*)?)\s*\/\]/' => 'button',
+        ];
+        foreach ($patterns as $pattern => $kind) {
+            $text = $markdown;
+            $markdown = preg_replace_callback($pattern, function ($match) use ($kind, $text) {
+                $attributes = self::attributes($match[1][0]);
+                $address = '';
+                if (isset($match[2])) {
+                    $address = trim($match[2][0]);
+                }
+                $html = self::html($kind, $attributes, $address);
+                if ($html === '') {
+                    return $match[0][0];
+                }
+                // inside a > quote (a callout), the note and the HTML keep the > so they stay in the box
+                $lineStart = strrpos(substr($text, 0, $match[0][1]), "\n");
+                $line = substr($text, $lineStart === false ? 0 : $lineStart + 1, 2);
+                $quote = str_starts_with($line, '>') ? '> ' : '';
+                // the note and the HTML each on a line of their own, as Docsify shows HTML that starts a line
+                return "\n" . $quote . '<!-- ' . self::NOTE . ': ' . $match[0][0] . " -->\n" . $quote . $html . "\n" . $quote;
+            }, $markdown, -1, $count, PREG_OFFSET_CAPTURE);
+        }
+        return $markdown;
+    }
+
+    private static function html(string $kind, array $attributes, string $address): string
+    {
+        $title = $attributes['title'] ?? '';
+        switch ($kind) {
+            case 'slides':
+                return self::iframe($address, $title !== '' ? $title : 'Slides');
+            case 'youtube':
+                $id = self::youtubeId($address);
+                return $id === '' ? '' : self::iframe('https://www.youtube-nocookie.com/embed/' . $id, $title !== '' ? $title : 'Video');
+            case 'iframe':
+                $url = $attributes['url'] ?? $attributes['src'] ?? '';
+                return $url === '' ? '' : self::iframe($url, $title !== '' ? $title : 'Embedded content');
+            case 'embedly':
+                return '<a class="embedly-card" data-card-theme="light" data-card-controls="0" data-card-align="left" href="'
+                    . htmlspecialchars($address) . '">' . htmlspecialchars($address) . '</a>';
+            case 'pdf':
+                return '[' . ($title !== '' ? $title : $address) . '](' . $address . ')';
+            case 'linkpreview':
+                $url = $attributes['url'] ?? '';
+                return $url === '' ? '' : '[' . $url . '](' . $url . ')';
+            case 'email':
+                return '[' . $address . '](mailto:' . $address . ')';
+            case 'button':
+                $url = $attributes['url'] ?? '';
+                return $url === '' ? '' : '[' . ($attributes['label'] ?? $url) . '](' . $url . ' \':class=button\')';
+        }
+        return '';
+    }
+
+    // Grav's Font Awesome 4 names: a name ending in -o is the regular (outline) style in Font Awesome 6, others solid
+    private static function icon(array $match): string
+    {
+        $name = $match[1];
+        $style = 'fas';
+        if (str_ends_with($name, '-o')) {
+            $style = 'far';
+            $name = substr($name, 0, -2);
+        }
+        return '<!-- ' . self::NOTE . ': ' . $match[0] . ' -->:' . $style . ' fa-' . $name . ' fa-fw:';
+    }
+
+    // A responsive iframe, as in the Docsify course template (Docsify-This and the kits style video-container-16by9)
+    private static function iframe(string $url, string $title): string
+    {
+        return '<div class="video-container-16by9"><iframe src="' . htmlspecialchars($url) . '" title="' . htmlspecialchars($title)
+            . '" frameborder="0" allowfullscreen="true"></iframe></div>';
+    }
+
+    // https://www.youtube.com/watch?v=ID, https://youtu.be/ID or just the ID → ID
+    private static function youtubeId(string $address): string
+    {
+        if (preg_match('/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/', $address, $found) === 1) {
+            return $found[1];
+        }
+        if (preg_match('/^[A-Za-z0-9_-]{6,}$/', $address) === 1) {
+            return $address;
+        }
+        return '';
+    }
+
+    // ' title="Slides" url="…"' → ['title' => 'Slides', 'url' => '…']
+    private static function attributes(string $text): array
+    {
+        preg_match_all('/([a-z][a-z0-9_-]*)="([^"]*)"/i', $text, $found, PREG_SET_ORDER);
+        $attributes = [];
+        foreach ($found as $match) {
+            $attributes[strtolower($match[1])] = $match[2];
+        }
+        return $attributes;
+    }
+
+    // ---- Docsify → Grav ----
+
+    // A hidden note and the line after it (the embed's HTML or link) → the original shortcode
+    // A line of the author's text that Docsify shows in another way (such as a heading that repeats the H1), kept as
+    // it was in a hidden note
+    // $headingsMoved: the headings after it moved up a level (### → ##), so they move back down on the way back
+    public static function hiddenLine(string $line, bool $headingsMoved = false): string
+    {
+        $note = $headingsMoved ? self::NOTE . '-line-headings-up' : self::NOTE . '-line';
+        return '<!-- ' . $note . ': ' . str_replace('-->', '--&gt;', $line) . ' -->';
+    }
+
+    public static function toGrav(string $markdown): string
+    {
+        // a hidden line whose following headings moved up: they move back down (## → ###), outside code
+        if (preg_match('/<!-- ' . self::NOTE . '-line-headings-up: /', $markdown) === 1) {
+            $codeParts = [];
+            $markdown = Helpers::hideCode($markdown, $codeParts);
+            $markdown = preg_replace_callback('/(<!-- ' . self::NOTE . '-line-headings-up: .*? -->)(.*)$/s', function ($match) {
+                return $match[1] . preg_replace('/^(#{2,5}\s)/m', '#$1', $match[2]);
+            }, $markdown);
+            $markdown = Helpers::showCode($markdown, $codeParts);
+            $markdown = str_replace('<!-- ' . self::NOTE . '-line-headings-up: ', '<!-- ' . self::NOTE . '-line: ', $markdown);
+        }
+        $markdown = preg_replace_callback('/<!-- ' . self::NOTE . '-line: (.*?) -->/', function ($match) {
+            return str_replace('--&gt;', '-->', $match[1]);
+        }, $markdown);
+        // icons first: their note and icon share a line
+        $markdown = preg_replace('/<!-- ' . self::NOTE . ': (\[fa[^\n]*?) -->:fa[srb] fa-[a-z0-9-]+ fa-fw:/', '$1', $markdown);
+        return preg_replace('/\n?(> )?<!-- ' . self::NOTE . ': (.*?) -->\n(?:> )?[^\n]*\n?(?(1)> )/', '$2', $markdown);
+    }
+}

@@ -944,6 +944,7 @@ class DocsifyFirstReader
         $codeParts = [];
         $markdown = Helpers::hideCode($markdown, $codeParts);
         $markdown = Callouts::toGrav($markdown);
+        $markdown = Embeds::toGrav($markdown);
         $markdown = $this->imageGridsToImages($markdown);
         $markdown = Links::imageOptionsToGrav($markdown);
         // links to pages whose Grav address is known (from the sidebars); any others are worked out from their path

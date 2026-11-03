@@ -68,6 +68,30 @@ class Links
         return implode('/', $parts) . '.md' . $docsifyAnchor;
     }
 
+    // Links to pages listed in $map (a Grav address without its ending / => its Docsify file, e.g. '/modules/module-01'
+    // => 'module-01.md'), as for a course, where module pages and menu pages all sit at the site's top
+    // $pagePath: the page's own Grav address, which relative links (../modules/module-02) start from
+    public static function mapToDocsify(string $markdown, array $map, string $pagePath): string
+    {
+        $pattern = '/\]\(((?:\/(?!\/)|\.\.?\/)[^)\s#?]*)(#[^)\s?]*)?( "[^"]*"| \'[^\']*\')?\)/';
+        return preg_replace_callback($pattern, function ($match) use ($map, $pagePath) {
+            $url = $match[1];
+            if (!str_starts_with($url, '/')) {
+                $url = self::resolve($pagePath, $url);
+            }
+            $path = '/' . implode('/', self::pathParts($url));
+            if (!isset($map[$path])) {
+                // not a converted page (the blog, …): see gravOnly()
+                return $match[0];
+            }
+            $anchor = '';
+            if (isset($match[2]) && $match[2] !== '') {
+                $anchor = '?id=' . substr($match[2], 1);
+            }
+            return '](' . $map[$path] . $anchor . ($match[3] ?? '') . ')';
+        }, $markdown);
+    }
+
     // Links that only work on the Grav site: pages that aren't guides (About, the blog), Grav views such as
     // ?embedded=true, and relative links such as ../readme. With the original site's address they become full
     // links to it; without one they're left as they are and listed in $warnings.

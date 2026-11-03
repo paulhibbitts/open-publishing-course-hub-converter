@@ -136,9 +136,18 @@ class Callouts
         return '<!-- grav: [details' . $match[1] . '] --><details><summary>' . htmlspecialchars($summary) . "</summary>\n";
     }
 
+    // Docsify shows a hidden note as text when a line inside it is blank or starts with > (a callout), so every line
+    // of the content starts with | inside the note, and loses it again on the way back
+    private const NOTE_LINE = '|';
+
     private static function hideEmbeddedContent(array $match): string
     {
         $content = str_replace('-->', '--&gt;', $match[1]);
+        $lines = explode("\n", $content);
+        foreach ($lines as $index => $line) {
+            $lines[$index] = self::NOTE_LINE . $line;
+        }
+        $content = implode("\n", $lines);
         return "<!-- grav: [showifembedded]\n" . $content . "\n[/showifembedded] -->";
     }
 
@@ -250,7 +259,21 @@ class Callouts
 
     private static function showEmbeddedContent(array $match): string
     {
-        return '[showifembedded]' . str_replace('--&gt;', '-->', $match[1]) . '[/showifembedded]';
+        // (a note written before the | lines were added is read as it is)
+        $lines = explode("\n", $match[1]);
+        $allMarked = true;
+        foreach ($lines as $line) {
+            if (!str_starts_with($line, self::NOTE_LINE)) {
+                $allMarked = false;
+            }
+        }
+        if ($allMarked) {
+            foreach ($lines as $index => $line) {
+                $lines[$index] = substr($line, strlen(self::NOTE_LINE));
+            }
+        }
+        $content = implode("\n", $lines);
+        return '[showifembedded]' . str_replace('--&gt;', '-->', $content) . '[/showifembedded]';
     }
 
     // '<!-- grav: [reflection title="Think"] -->' → 'reflection title="Think"' (or null for any other line)

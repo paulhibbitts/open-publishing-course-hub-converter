@@ -49,7 +49,7 @@ class GravReader
         return $guide;
     }
 
-    private function readPage(string $pagesDir, string $folder, string $file, string $kind): Page
+    protected function readPage(string $pagesDir, string $folder, string $file, string $kind): Page
     {
         $page = new Page($kind, $folder, $file);
         $text = file_get_contents($pagesDir . '/' . $folder . '/' . $file);
@@ -76,7 +76,7 @@ class GravReader
     }
 
     // Sub-folders in Grav's order (by their ordering numbers, then by name)
-    private function subfolders(string $dir): array
+    protected function subfolders(string $dir): array
     {
         $names = [];
         foreach (scandir($dir) as $name) {
@@ -91,7 +91,7 @@ class GravReader
     }
 
     // The folder's Markdown file (a Grav page has one), or '' when there isn't one
-    private function markdownFile(string $dir): string
+    protected function markdownFile(string $dir): string
     {
         foreach (scandir($dir) as $name) {
             if (str_ends_with($name, '.md')) {

@@ -248,29 +248,41 @@ class Links
         return preg_replace('/\]\(([^)\s#]+)(#[^)\s]*)? [\'"]:target=_blank[\'"]\)/', '](\1?target=_blank\2)', $markdown);
     }
 
-    // Docsify's image and link options → Grav's: ![alt](photo.jpg ':no-zoom :class=banner-image') → ![alt](photo.jpg?classes=banner-image),
+    // Docsify's image and link options → Grav's: ![alt](photo.jpg ':no-zoom :class=wide') → ![alt](photo.jpg?classes=wide),
     // [Quiz](https://example.org ':class=button') → [Quiz](https://example.org?classes=button).
-    // Grav has nothing like :no-zoom, so it's dropped.
+    // The kits' banner images become an image Grav crops to a wide strip, which works in any theme:
+    // ![alt](photo.jpg ':class=banner-image') → ![alt](photo.jpg?cropZoom=1200,300). Grav has nothing like :no-zoom,
+    // so it's dropped.
     public static function imageOptionsToGrav(string $markdown): string
     {
         $pattern = '/(!?\[[^\]]*\]\()([^)\s]+) ([\'"])([^\'")]*:(?:no-zoom|class=)[^\'")]*)\3\)/';
         return preg_replace_callback($pattern, function ($match) {
-            $classes = [];
+            $isImage = str_starts_with($match[1], '!');
+            $options = [];
             foreach (preg_split('/\s+/', trim($match[4])) as $option) {
-                if (str_starts_with($option, ':class=')) {
-                    $classes[] = substr($option, strlen(':class='));
+                if (!str_starts_with($option, ':class=')) {
+                    continue;
+                }
+                $class = substr($option, strlen(':class='));
+                if ($isImage && isset(self::BANNER_CROPS[$class])) {
+                    $options[] = 'cropZoom=' . self::BANNER_CROPS[$class];
+                } else {
+                    $options[] = 'classes=' . $class;
                 }
             }
             $source = $match[2];
-            if (count($classes) > 0) {
+            foreach ($options as $option) {
                 // add to the address's ?query if it already has one
                 $separator = '?';
                 if (str_contains($source, '?')) {
                     $separator = '&';
                 }
-                $source .= $separator . 'classes=' . implode(',', $classes);
+                $source .= $separator . $option;
             }
             return $match[1] . $source . ')';
         }, $markdown);
     }
+
+    // the kits' banner image classes, and the width and height Grav crops them to (about the kits' banner shapes)
+    private const BANNER_CROPS = ['banner-image' => '1200,300', 'banner-tall-image' => '1200,420'];
 }

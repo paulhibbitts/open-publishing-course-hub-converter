@@ -528,6 +528,7 @@ class CourseDocsifyReader
         $markdown = Embeds::iconsToGrav($markdown);
         $markdown = Embeds::iframesToGrav($markdown);
         $markdown = $this->buttonsToGrav($markdown);
+        $markdown = $this->badgesToGrav($markdown);
         $markdown = Links::imageOptionsToGrav($markdown);
         $markdown = Links::mapToGrav($markdown, $this->addresses);
         $markdown = Links::newTabToGrav($markdown);
@@ -679,6 +680,13 @@ class CourseDocsifyReader
             $label = str_replace('"', '&quot;', $match[1]);
             return '[button label="' . $label . '" url="' . $match[2] . '" /]';
         }, $markdown);
+    }
+
+    // A Docsify badge (a date shown as a small dark pill) gets Bootstrap's badge-secondary, the pill Open Matter shows.
+    // Example: <span class='badge'>Tue Jun 12th</span> → <span class="badge badge-secondary">Tue Jun 12th</span>
+    private function badgesToGrav(string $markdown): string
+    {
+        return preg_replace('/<span class=([\'"])badge\1>/', '<span class="badge badge-secondary">', $markdown);
     }
 
     private function addNote(string $note): void

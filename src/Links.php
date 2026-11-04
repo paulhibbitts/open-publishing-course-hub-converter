@@ -189,12 +189,17 @@ class Links
     // guide/section/page.md?id=heading → /guide/section/page#heading, guide/README.md → /guide,
     // home.md → / (or, in a single guide, the guide's address). Links to the original site go back to Grav's own
     // form (/about). $singleGuide: the single guide's address name, or '' for a site with a Guides page.
-    public static function toGrav(string $markdown, string $singleGuide, string $siteUrl): string
+    // $keepSiteLinks: in a site this converter made, a link starting with / (such as /guide/page.md, a page's
+    // Markdown version) is one it kept for the Grav site, so it's left as it is.
+    public static function toGrav(string $markdown, string $singleGuide, string $siteUrl, bool $keepSiteLinks = false): string
     {
         // ](some/file.md) or ](some/file.md?id=heading) – a relative link to a Docsify page – maybe followed by a
         // "title" or an option such as ':target=_blank' (see newTabToGrav)
         $pattern = '/\]\(([A-Za-z0-9._\/-]+\.md)(\?id=[^)\s]*)?( "[^"]*"| \'[^\']*\')?\)/';
-        $markdown = preg_replace_callback($pattern, function ($match) use ($singleGuide) {
+        $markdown = preg_replace_callback($pattern, function ($match) use ($singleGuide, $keepSiteLinks) {
+            if ($keepSiteLinks && str_starts_with($match[1], '/')) {
+                return $match[0];
+            }
             $anchor = '';
             if (isset($match[2]) && $match[2] !== '') {
                 $anchor = '#' . substr($match[2], strlen('?id='));
@@ -215,7 +220,8 @@ class Links
     // 'guide/section/page.md' → '/guide/section/page', 'guide/README.md' → '/guide', 'home.md' → '/'
     private static function gravPath(string $docsifyPath, string $singleGuide): string
     {
-        $parts = explode('/', $docsifyPath);
+        // a link from the site's top (/topic-one.md) is the same page as topic-one.md
+        $parts = explode('/', ltrim($docsifyPath, '/'));
         $fileName = array_pop($parts);
         if ($fileName !== 'README.md' && $fileName !== 'home.md') {
             $parts[] = substr($fileName, 0, -strlen('.md'));
@@ -284,5 +290,5 @@ class Links
     }
 
     // the kits' banner image classes, and the width and height Grav crops them to (about the kits' banner shapes)
-    private const BANNER_CROPS = ['banner-image' => '1200,300', 'banner-tall-image' => '1200,420'];
+    public const BANNER_CROPS = ['banner-image' => '1200,300', 'banner-tall-image' => '1200,420'];
 }

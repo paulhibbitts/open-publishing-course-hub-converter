@@ -160,7 +160,7 @@ class DocsifyReader
         $text = Helpers::hideCode($text, $codeParts);
         $text = Callouts::toGrav($text);
         $text = Embeds::toGrav($text);
-        $text = Links::toGrav($text, $this->singleGuide, $this->siteUrl);
+        $text = Links::toGrav($text, $this->singleGuide, $this->siteUrl, true);
         $text = Links::newTabToGrav($text);
         return Helpers::showCode($text, $codeParts);
     }

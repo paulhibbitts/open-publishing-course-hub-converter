@@ -131,7 +131,12 @@ class Embeds
         if ((int) $found[2] < 2 * (int) $found[3]) {
             return '';
         }
-        return '![' . $alt . '](' . $found[1] . " ':class=banner-image')";
+        // a crop this converter made from a kit's tall banner (1200,420) goes back to it
+        $class = 'banner-image';
+        if ($found[2] . ',' . $found[3] === Links::BANNER_CROPS['banner-tall-image']) {
+            $class = 'banner-tall-image';
+        }
+        return '![' . $alt . '](' . $found[1] . " ':class=" . $class . "')";
     }
 
     // Grav's Font Awesome 4 names: a name ending in -o is the regular (outline) style in Font Awesome 6, others solid

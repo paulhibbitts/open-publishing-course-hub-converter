@@ -492,11 +492,13 @@ if ($repo !== null && $course === null) {
     }
     $tips = ['to start your site on ' . $homeTitle . ', set Home Page to ' . $homePage . ' in Configuration → System'];
     // Grav keeps the site's name outside the pages folder (Site Title), so the converter can only suggest it
+    // Quark 2 shows a logo in its header (the Grav logo until you add your own), not the site's name
+    $nameTip = 'to use your site\'s name in browser tabs and search results, set Site Title';
     if ($site->name !== '') {
-        $tips[] = 'to show "' . $site->name . '" as your site\'s name in the header, set Site Title to it in Configuration → Site';
-    } else {
-        $tips[] = 'to show your site\'s name in the header, set Site Title in Configuration → Site';
+        $nameTip = 'to use "' . $site->name . '" as your site\'s name in browser tabs and search results, set Site Title to it';
     }
+    $tips[] = $nameTip . ' in Configuration → Site. The header shows a logo: to replace the Grav logo, add your own as '
+        . 'Custom Logo in Themes → My Theme (Quark 2 Options tab)';
 } elseif ($course === null) {
     $pagesFolder = findPagesFolder($searchFolder);
     if ($pagesFolder === '') {

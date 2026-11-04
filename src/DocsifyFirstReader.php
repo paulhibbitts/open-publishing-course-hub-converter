@@ -63,7 +63,7 @@ class DocsifyFirstReader
         }
         $this->readSiteTitle($guideFolders);
         $guidesPage = $this->parseGuidesPage($this->readFile('home.md'));
-        $site->guidesPage = $this->guidesPageToGrav($guidesPage);
+        $site->guidesPage = $this->guidesPageToGrav($guidesPage, $this->guidesLinkLabel($guideFolders));
         $number = 0;
         foreach ($this->inCardOrder($guideFolders, $guidesPage['cards']) as $folder) {
             $number++;
@@ -826,7 +826,8 @@ class DocsifyFirstReader
         return $cards;
     }
 
-    private function guidesPageToGrav(array $guidesPage): Page
+    // $menuLabel: the guides' navbar link back to the Guides page (such as "All Guides"), or '' if they have none
+    private function guidesPageToGrav(array $guidesPage, string $menuLabel): Page
     {
         $page = new Page('guides', '00.guides', 'reader-list.md');
         $page->meta = ['title' => $guidesPage['title']];
@@ -835,8 +836,13 @@ class DocsifyFirstReader
         }
         $page->meta['cards_per_row'] = $guidesPage['cards_per_row'];
         $page->meta['published'] = true;
-        // the Guides page is usually the site's home page, so it's kept out of the site menu (Hide from Menu)
-        $page->meta['hide_from_menu'] = true;
+        if ($menuLabel === '') {
+            // the Guides page is usually the site's home page, so it's kept out of the site menu (Hide from Menu)
+            $page->meta['hide_from_menu'] = true;
+        } elseif ($menuLabel !== $page->meta['title']) {
+            // the guides link back to it in Docsify, so it stays in the menu, with the same label
+            $page->meta['menu'] = $menuLabel;
+        }
         $page->yaml = $this->yaml($page->meta);
         $page->body = $this->toGravText($guidesPage['text']);
         return $page;
@@ -1107,6 +1113,19 @@ class DocsifyFirstReader
                 return;
             }
         }
+    }
+
+    // The label of the guides' navbar link back to the Guides page, '' if they have none.
+    // Example: "- [All Guides](home.md)" → 'All Guides' (the site title link, ":class=site-title", doesn't count)
+    private function guidesLinkLabel(array $guideFolders): string
+    {
+        foreach ($guideFolders as $folder) {
+            $navbarFile = $this->dir . '/' . $folder . '/_navbar.md';
+            if (is_file($navbarFile) && preg_match('/^\s*[-*] \[([^\]]+)\]\((?:\.\.\/|\/)?home\.md\)\s*$/m', file_get_contents($navbarFile), $found) === 1) {
+                return $found[1];
+            }
+        }
+        return '';
     }
 
     // A Guides page titled with the site's name goes back to "Guides": Grav already shows the site's name in its header

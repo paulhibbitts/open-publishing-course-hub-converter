@@ -527,6 +527,7 @@ class CourseDocsifyReader
         $markdown = Embeds::toGrav($markdown);
         $markdown = Embeds::iconsToGrav($markdown);
         $markdown = Embeds::iframesToGrav($markdown);
+        $markdown = $this->buttonsToGrav($markdown);
         $markdown = Links::imageOptionsToGrav($markdown);
         $markdown = Links::mapToGrav($markdown, $this->addresses);
         $markdown = Links::newTabToGrav($markdown);
@@ -658,8 +659,26 @@ class CourseDocsifyReader
                 $this->addNote($file . ' (Docsify\'s cover page) isn\'t used in Grav, so it wasn\'t converted');
                 continue;
             }
+            // a Starter Kit's copy of a page for an LMS (lms-schedule.md for schedule.md): Grav embeds the page itself
+            $original = substr($file, strlen('lms-'));
+            if (str_starts_with($file, 'lms-') && in_array($original, $converted, true)) {
+                $this->addNote($file . ' (a copy of ' . $original . ' for an LMS) wasn\'t converted – in Grav, embed that page '
+                    . 'itself by adding ?embedded=true to its address');
+                continue;
+            }
             $this->addNote($file . ' isn\'t in the sidebar or navbar, so it wasn\'t converted');
         }
+    }
+
+    // A Docsify link button becomes Open Course Hub's [button] shortcode, which the theme shows as a button.
+    // Example: [Quiz due Jun 4th](https://example.org/quiz ':class=button') → [button label="Quiz due Jun 4th" url="https://example.org/quiz" /]
+    private function buttonsToGrav(string $markdown): string
+    {
+        $pattern = '/(?<!!)\[([^\]]+)\]\(([^)\s]+) [\'"]:class=button[\'"]\)/';
+        return preg_replace_callback($pattern, function ($match) {
+            $label = str_replace('"', '&quot;', $match[1]);
+            return '[button label="' . $label . '" url="' . $match[2] . '" /]';
+        }, $markdown);
     }
 
     private function addNote(string $note): void

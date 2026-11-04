@@ -400,6 +400,7 @@ class CourseDocsifyReader
             $site->courseFooter->body = $this->toGravText($footer, $site->courseFooter, '_footer.md');
         }
         $this->noteOtherPages(array_merge(['home.md', 'contact.md'], $moduleFiles, $menuFiles));
+        Helpers::turnOnFootnotes($site);
         return $site;
     }
 

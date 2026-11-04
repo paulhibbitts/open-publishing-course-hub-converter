@@ -12,4 +12,5 @@ class Site
     public ?Page $courseSidebar = null;
     public ?Page $courseHome = null;     // the course's home page; its children are the parts it shows (page-inject)
     public ?Page $courseFooter = null;
+    public string $name = '';            // the site's name, when the Docsify site shows one ('' if not known)
 }

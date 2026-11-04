@@ -449,7 +449,9 @@ if ($repo !== null) {
         (new CourseGravWriter())->write($course, $work . '/out/pages');
         $guides = [];
         $warnings = array_values(array_unique($reader->notes));
-        $tips = ['copy these pages into your Open Course Hub site\'s user/pages folder, in place of its home, modules, sidebar and footer folders'];
+        $tips = ['put this pages folder in your Open Course Hub site\'s user folder, keeping a copy of the old one – copy back any old '
+            . 'pages you want to keep, such as the blog (04.blog) or the header image (headerimage)',
+            'to show your course\'s name in the header, set Site Title in Configuration → Site'];
     }
 } elseif (findCoursePagesFolder($searchFolder) !== '') {
     // an Open Course Hub course: a Docsify course, laid out like the Docsify Open Course Starter Kit
@@ -489,6 +491,12 @@ if ($repo !== null && $course === null) {
         $homePage = '/' . $site->guidesPage->slug();
     }
     $tips = ['to start your site on ' . $homeTitle . ', set Home Page to ' . $homePage . ' in Configuration → System'];
+    // Grav keeps the site's name outside the pages folder (Site Title), so the converter can only suggest it
+    if ($site->name !== '') {
+        $tips[] = 'to show "' . $site->name . '" as your site\'s name in the header, set Site Title to it in Configuration → Site';
+    } else {
+        $tips[] = 'to show your site\'s name in the header, set Site Title in Configuration → Site';
+    }
 } elseif ($course === null) {
     $pagesFolder = findPagesFolder($searchFolder);
     if ($pagesFolder === '') {

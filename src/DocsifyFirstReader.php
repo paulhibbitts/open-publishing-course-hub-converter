@@ -47,6 +47,12 @@ class DocsifyFirstReader
             $this->mapAddresses('', $this->singleGuideSlug);
             $this->addGuide($site, $this->readGuide('', $this->singleGuideSlug, 1, []));
             $this->noteUnconvertedPages();
+            Helpers::turnOnFootnotes($site);
+            // a single guide's site is named after the guide, unless its navbar shows another name
+            $site->name = $home['title'];
+            if ($this->siteName !== '') {
+                $site->name = $this->siteName;
+            }
             return $site;
         }
 
@@ -69,6 +75,8 @@ class DocsifyFirstReader
         }
         $this->useGuidesTitle($site->guidesPage);
         $this->noteUnconvertedPages();
+        Helpers::turnOnFootnotes($site);
+        $site->name = $this->siteName;
         return $site;
     }
 
@@ -224,11 +232,13 @@ class DocsifyFirstReader
         }
         $guideFolder = sprintf('%02d', $number) . '.' . $slug;
         $guide = new Page('guide', $guideFolder, 'section-list.md');
+        $sidebar = $this->parseSidebar($this->readFile($base . '_sidebar.md'));
+        // Grav shows a card for each section, so a list of the guide's pages on its home isn't needed
+        $home['text'] = $this->withoutPageList($home['text'], $sidebar);
         $guide->body = $this->toGravText($home['text']);
         // images shown on the guide home itself go in the guide's folder
         $this->addImages($guide, $home['text'], $homeFile);
 
-        $sidebar = $this->parseSidebar($this->readFile($base . '_sidebar.md'));
         $label = '';
         $sectionNumber = 0;
         foreach ($sidebar as $entry) {
@@ -259,6 +269,71 @@ class DocsifyFirstReader
         $guide->yaml = $this->yaml($guide->meta);
         $guide->menuPages = $this->readMenuPages($base, $guideFolder, $sidebar);
         return $guide;
+    }
+
+    // Leaves out a list on the guide home that only links to the guide's own pages (with the heading just above
+    // it), such as the Docsify Open Publishing Starter Kit's "## Website Pages" – Grav shows these as section cards.
+    // Example: "## Website Pages" then "- [Introduction](introduction.md)", "- [Topic One](topic-one.md)" …
+    private function withoutPageList(string $text, array $sidebar): string
+    {
+        // every page the sidebar lists
+        $sidebarFiles = [];
+        foreach ($sidebar as $section) {
+            $sidebarFiles[] = $section['file'];
+            foreach ($section['pages'] as $page) {
+                $sidebarFiles[] = $page['file'];
+            }
+        }
+
+        $lines = explode("\n", $text);
+        $start = 0;
+        while (true) {
+            // the next list: its first item line, then its item lines up to the first line that isn't one
+            while (isset($lines[$start]) && preg_match('/^\s*[-*+] /', $lines[$start]) !== 1) {
+                $start++;
+            }
+            if (!isset($lines[$start])) {
+                return $text;
+            }
+            $end = $start;
+            while (isset($lines[$end]) && preg_match('/^\s*[-*+] /', $lines[$end]) === 1) {
+                $end++;
+            }
+            if ($this->onlyListsGuidePages(array_slice($lines, $start, $end - $start), $sidebarFiles)) {
+                break;
+            }
+            $start = $end;
+        }
+
+        // the heading just above the list goes too (blank lines between them are allowed)
+        $from = $start;
+        $above = $start - 1;
+        while ($above >= 0 && trim($lines[$above]) === '') {
+            $above--;
+        }
+        $heading = '';
+        if ($above >= 0 && preg_match('/^#{2,6}\s+(.+)$/', trim($lines[$above]), $found) === 1) {
+            $from = $above;
+            $heading = ' ("' . $found[1] . '")';
+        }
+        $this->notes[] = 'the guide home\'s list of its pages' . $heading . ' was left out – Grav shows a card for each section';
+        array_splice($lines, $from, $end - $from);
+        return trim(implode("\n", $lines));
+    }
+
+    // True when a list's links (at least two) all go to pages the guide's sidebar lists
+    private function onlyListsGuidePages(array $listLines, array $sidebarFiles): bool
+    {
+        preg_match_all('/\]\(([^)\s]+)/', implode("\n", $listLines), $links);
+        if (count($links[1]) < 2) {
+            return false;
+        }
+        foreach ($links[1] as $target) {
+            if (!in_array($this->sidebarPath($target), $sidebarFiles, true)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // The guide home's settings, in the skeleton's order: from the page itself, then its card on the Guides page,

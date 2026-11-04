@@ -185,6 +185,22 @@ class Callouts
 
     // ---- Docsify → Grav ----
 
+    // A <details> section written in Docsify becomes the [details] shortcode: Grav shows Markdown inside HTML as
+    // plain text, all in one block, but it reads Markdown inside a shortcode. A Docsify-This accordion
+    // (<div class="accordion"> around the sections) isn't needed in Grav, so the div goes.
+    // Example: <details><summary>Usability</summary> … </details> → [details summary="Usability"] … [/details]
+    private static function detailsToShortcode(string $markdown): string
+    {
+        $markdown = preg_replace_callback('/<details>\s*<summary>(.*?)<\/summary>/s', function ($match) {
+            $summary = str_replace('"', '&quot;', trim(strip_tags($match[1])));
+            return '[details summary="' . $summary . '"]';
+        }, $markdown);
+        $markdown = str_replace('</details>', '[/details]', $markdown);
+        // the accordion div, when all it holds is [details] sections
+        return preg_replace('/^<div class="accordion">\s*\n(\s*\[details .*?\[\/details\]\s*)\n<\/div>[ \t]*$/ms', '$1', $markdown);
+    }
+
+
     // A callout with a hidden note goes back to its exact shortcode, and a TIP that became a NOTE becomes a TIP
     // again. A callout without a note (from a site made in Docsify) becomes a shortcode when its type and heading
     // match one (> [!IMPORTANT] with **Example** → [example]); otherwise it stays a > [!TYPE] callout, which the
@@ -200,6 +216,7 @@ class Callouts
         // <details> made from [details] (see toDocsify) goes back to the shortcode; the summary is in the note
         $markdown = preg_replace('/<!-- grav: \[details((?: [^\]]*)?)\] --><details><summary>[^<]*<\/summary>\n/', '[details$1]', $markdown);
         $markdown = str_replace("\n</details><!-- grav: [/details] -->", '[/details]', $markdown);
+        $markdown = self::detailsToShortcode($markdown);
         $markdown = self::letterBarToTopics($markdown);
         $layoutNames = implode('|', self::LAYOUT_SHORTCODES);
         $markdown = preg_replace('/<!-- grav: \[(\/?)(' . $layoutNames . ')\] -->/', '[$1$2]', $markdown);

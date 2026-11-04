@@ -1,6 +1,8 @@
 <?php
 namespace OPG;
 
+use Symfony\Component\Yaml\Yaml;
+
 class Helpers
 {
     public const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
@@ -181,6 +183,46 @@ class Helpers
         return preg_replace_callback('/' . self::CODE_MARK . '(\d+)' . self::CODE_MARK . '/u', function ($match) use ($codeParts) {
             return $codeParts[(int)$match[1]];
         }, $markdown);
+    }
+
+    // Grav shows footnotes only with Markdown Extra on (it's off by default), so each page of a site made in Docsify
+    // that has a footnote turns it on for itself. Example: "Markdown[^1]" … "[^1]: [Markdown](https://…)"
+    public static function turnOnFootnotes(Site $site): void
+    {
+        foreach (self::allPages($site) as $page) {
+            $codeParts = [];
+            $text = self::hideCode($page->body, $codeParts);
+            // a footnote's text: [^1]: at the start of a line
+            if (preg_match('/^\[\^[^\]\s]+\]:/m', $text) === 1 && !isset($page->meta['markdown'])) {
+                $page->meta['markdown'] = ['extra' => true];
+                $page->yaml = rtrim(Yaml::dump($page->meta, 4, 4, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK));
+            }
+        }
+    }
+
+    // Every page of a site: the Guides page, each guide with its sections, pages and menu pages, and a course's pages
+    private static function allPages(Site $site): array
+    {
+        $pages = [];
+        if ($site->guidesPage !== null) {
+            $pages[] = $site->guidesPage;
+        }
+        foreach ($site->guides as $guide) {
+            $pages[] = $guide;
+            foreach ($guide->children as $section) {
+                $pages[] = $section;
+                $pages = array_merge($pages, $section->children);
+            }
+            $pages = array_merge($pages, $guide->menuPages);
+        }
+        foreach ([$site->courseHome, $site->modulesPage] as $parent) {
+            if ($parent !== null) {
+                $pages[] = $parent;
+                $pages = array_merge($pages, $parent->children);
+            }
+        }
+        $pages = array_merge($pages, $site->coursePages);
+        return $pages;
     }
 
     // a character that never appears in written text (Unicode private use), to mark the placeholders

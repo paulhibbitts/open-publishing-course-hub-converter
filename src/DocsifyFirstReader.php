@@ -48,6 +48,7 @@ class DocsifyFirstReader
             $this->addGuide($site, $this->readGuide('', $this->singleGuideSlug, 1, []));
             $this->noteUnconvertedPages();
             Helpers::turnOnFootnotes($site);
+            $this->notes = array_merge($this->notes, Helpers::docsifyWordingNotes($site));
             // a single guide's site is named after the guide, unless its navbar shows another name
             $site->name = $home['title'];
             if ($this->siteName !== '') {
@@ -76,6 +77,7 @@ class DocsifyFirstReader
         $this->useGuidesTitle($site->guidesPage);
         $this->noteUnconvertedPages();
         Helpers::turnOnFootnotes($site);
+        $this->notes = array_merge($this->notes, Helpers::docsifyWordingNotes($site));
         $site->name = $this->siteName;
         return $site;
     }

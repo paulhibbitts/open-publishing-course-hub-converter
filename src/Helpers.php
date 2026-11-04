@@ -200,6 +200,26 @@ class Helpers
         }
     }
 
+    // Pages whose own text talks about Docsify, which may read oddly on a Grav site, so the notes point to them.
+    // Example: "This version is published with Docsify-This" or "its card on the Guides page (home.md)".
+    // Mentions of Docsify-This as a tool ("see Docsify-This") aren't counted.
+    public static function docsifyWordingNotes(Site $site): array
+    {
+        $notes = [];
+        foreach (self::allPages($site) as $page) {
+            // the page's words only: no code blocks, link addresses or web addresses
+            $text = preg_replace('/^(```|~~~).*?^\1/ms', '', $page->body);
+            $text = preg_replace('/\]\([^)]*\)/', ']', $text);
+            $text = preg_replace('/https?:\/\/\S+/', '', $text);
+            // Docsify's own files, or the site being "published with/by Docsify"
+            $pattern = '/(?<![\w\/.-])(_sidebar\.md|_navbar\.md|_coverpage\.md|_footer\.md|home\.md|index\.html)\b|published (?:with|by) Docsify/i';
+            if (preg_match($pattern, $text, $found) === 1) {
+                $notes[] = '"' . $page->title() . '" mentions Docsify ("' . $found[0] . '") – check its wording for Grav';
+            }
+        }
+        return $notes;
+    }
+
     // Every page of a site: the Guides page, each guide with its sections, pages and menu pages, and a course's pages
     private static function allPages(Site $site): array
     {

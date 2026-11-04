@@ -401,6 +401,7 @@ class CourseDocsifyReader
         }
         $this->noteOtherPages(array_merge(['home.md', 'contact.md'], $moduleFiles, $menuFiles));
         Helpers::turnOnFootnotes($site);
+        $this->notes = array_merge($this->notes, Helpers::docsifyWordingNotes($site));
         return $site;
     }
 

@@ -264,6 +264,7 @@ class Links
         $pattern = '/(!?\[[^\]]*\]\()([^)\s]+) ([\'"])([^\'")]*:(?:no-zoom|class=)[^\'")]*)\3\)/';
         return preg_replace_callback($pattern, function ($match) {
             $isImage = str_starts_with($match[1], '!');
+            $classes = [];
             $options = [];
             foreach (preg_split('/\s+/', trim($match[4])) as $option) {
                 if (!str_starts_with($option, ':class=')) {
@@ -273,8 +274,12 @@ class Links
                 if ($isImage && isset(self::BANNER_CROPS[$class])) {
                     $options[] = 'cropZoom=' . self::BANNER_CROPS[$class];
                 } else {
-                    $options[] = 'classes=' . $class;
+                    $classes[] = $class;
                 }
+            }
+            // several classes go in one classes= (Grav reads only one)
+            if (count($classes) > 0) {
+                $options[] = 'classes=' . implode(',', $classes);
             }
             $source = $match[2];
             foreach ($options as $option) {

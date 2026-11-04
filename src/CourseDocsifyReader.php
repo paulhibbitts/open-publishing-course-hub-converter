@@ -675,6 +675,7 @@ class CourseDocsifyReader
     // Example: [Quiz due Jun 4th](https://example.org/quiz ':class=button') → [button label="Quiz due Jun 4th" url="https://example.org/quiz" /]
     private function buttonsToGrav(string $markdown): string
     {
+        // (?<!!): a link, not an image
         $pattern = '/(?<!!)\[([^\]]+)\]\(([^)\s]+) [\'"]:class=button[\'"]\)/';
         return preg_replace_callback($pattern, function ($match) {
             $label = str_replace('"', '&quot;', $match[1]);

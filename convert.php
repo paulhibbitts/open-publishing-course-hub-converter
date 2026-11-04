@@ -491,8 +491,7 @@ if ($repo !== null && $course === null) {
         $homePage = '/' . $site->guidesPage->slug();
     }
     $tips = ['to start your site on ' . $homeTitle . ', set Home Page to ' . $homePage . ' in Configuration → System'];
-    // Grav keeps the site's name outside the pages folder (Site Title), so the converter can only suggest it
-    // Quark 2 shows a logo in its header (the Grav logo until you add your own), not the site's name
+    // the site's name is a Grav setting outside the pages folder, so it's a tip; Quark 2's header shows a logo, not the name
     $nameTip = 'to use your site\'s name in browser tabs and search results, set Site Title';
     if ($site->name !== '') {
         $nameTip = 'to use "' . $site->name . '" as your site\'s name in browser tabs and search results, set Site Title to it';

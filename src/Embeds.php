@@ -75,39 +75,60 @@ class Embeds
         return substr($text, $lineStart + 1, 1) === '>';
     }
 
+    // An embed shortcode → the HTML or link Docsify shows; '' when it has no address to use.
+    // $title (a shortcode's title="…") falls back to a plain name, such as 'Slides'.
     private static function html(string $kind, array $attributes, string $address): string
     {
         $title = $attributes['title'] ?? '';
+        $url = $attributes['url'] ?? '';
         switch ($kind) {
             case 'slides':
-                return self::iframe($address, $title !== '' ? $title : 'Slides');
+                return self::iframe($address, self::titleOr($title, 'Slides'));
             case 'youtube':
                 $id = self::youtubeId($address);
-                return $id === '' ? '' : self::iframe('https://www.youtube-nocookie.com/embed/' . $id, $title !== '' ? $title : 'Video');
+                if ($id === '') {
+                    return '';
+                }
+                return self::iframe('https://www.youtube-nocookie.com/embed/' . $id, self::titleOr($title, 'Video'));
             case 'iframe':
                 $url = $attributes['url'] ?? $attributes['src'] ?? '';
-                return $url === '' ? '' : self::iframe($url, $title !== '' ? $title : 'Embedded content');
+                if ($url === '') {
+                    return '';
+                }
+                return self::iframe($url, self::titleOr($title, 'Embedded content'));
             case 'embedly':
                 return self::embedlyCard($address);
             case 'pdf':
-                return '[' . ($title !== '' ? $title : $address) . '](' . $address . ')';
+                return '[' . self::titleOr($title, $address) . '](' . $address . ')';
             case 'linkpreview':
-                $url = $attributes['url'] ?? '';
-                return $url === '' ? '' : self::embedlyCard($url);
+                if ($url === '') {
+                    return '';
+                }
+                return self::embedlyCard($url);
             case 'email':
                 return '[' . $address . '](mailto:' . $address . ')';
             case 'h5p':
                 // only url="…" works outside Grav ([h5p id="…"] needs the site's settings)
-                $url = $attributes['url'] ?? '';
                 if ($url === '') {
                     return '';
                 }
-                return self::h5p($url, $title !== '' ? $title : 'Interactive content');
+                return self::h5p($url, self::titleOr($title, 'Interactive content'));
             case 'button':
-                $url = $attributes['url'] ?? '';
-                return $url === '' ? '' : '[' . ($attributes['label'] ?? $url) . '](' . $url . ' \':class=button\')';
+                if ($url === '') {
+                    return '';
+                }
+                $label = $attributes['label'] ?? $url;
+                return '[' . $label . '](' . $url . ' \':class=button\')';
         }
         return '';
+    }
+
+    private static function titleOr(string $title, string $default): string
+    {
+        if ($title !== '') {
+            return $title;
+        }
+        return $default;
     }
 
     // An H5P activity, as in the Starter Kits: its iframe and H5P's resizer script

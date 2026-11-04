@@ -318,7 +318,7 @@ class DocsifyWriter
             $footer[] = "> [!TIP]\n" . Helpers::quoteLines(trim($this->convert($sideBox, $gravPath, $homeFile)));
             $footer[] = '';
         }
-        // (left out when the guide has no authors or edition, so there's no stray " · ")
+        // no authors line when the guide has neither authors nor edition (it would be just " · ")
         $hasAuthorsLine = $guide->setting('authors') !== '' || $guide->setting('edition') !== '';
         if ($authorsLine && $hasAuthorsLine) {
             $footer[] = $guide->setting('authors') . ' · ' . $guide->setting('edition') . $this->updated($guide);

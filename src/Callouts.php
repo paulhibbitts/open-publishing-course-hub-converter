@@ -57,6 +57,9 @@ class Callouts
 
         // [details summary="…"]text[/details] (a section readers open, as in Pressbooks books) → HTML's own
         // <details>, which Docsify shows as it is; the hidden note keeps the shortcode for the way back
+        // accordion sections next to each other ([details … class="accordion"]) also get the Starter Kits' accordion
+        // box around them; the hidden notes take it off again on the way back
+        $markdown = self::wrapAccordions($markdown);
         $markdown = preg_replace_callback('/\[details((?: [^\]]*)?)\]/', [self::class, 'detailsToHtml'], $markdown);
         $markdown = str_replace('[/details]', "\n</details><!-- grav: [/details] -->", $markdown);
 
@@ -124,6 +127,21 @@ class Callouts
         $lines = '[!' . $type . "]\n**" . $heading . "**\n\n" . $text;
         return '<!-- grav: [' . $name . $attributes . "] -->\n" . Helpers::quoteLines($lines);
     }
+
+    // Accordion sections next to each other go inside <div class="accordion">, as in the Starter Kits, so Docsify shows
+    // them as one accordion. Example: [details summary="A" class="accordion"]…[/details] [details summary="B" class="accordion"]…[/details]
+    // → <div class="accordion"> (both sections) </div>
+    private static function wrapAccordions(string $markdown): string
+    {
+        $section = '\[details[^\]]*class="accordion"[^\]]*\].*?\[\/details\]';
+        return preg_replace_callback('/' . $section . '(?:\s*' . $section . ')*/s', function ($match) {
+            return self::ACCORDION_START . $match[0] . self::ACCORDION_END;
+        }, $markdown);
+    }
+
+    // the accordion box, with hidden notes so it comes off again exactly on the way back to Grav
+    private const ACCORDION_START = "<div class=\"accordion\"><!-- grav: accordion -->\n\n";
+    private const ACCORDION_END = "\n\n</div><!-- grav: /accordion -->";
 
     // [details summary="Text version"] → <details><summary>Text version</summary>, followed by a blank line so
     // Docsify reads the text inside as Markdown
@@ -229,6 +247,7 @@ class Callouts
         // <details> made from [details] (see toDocsify) goes back to the shortcode; the summary is in the note
         $markdown = preg_replace('/<!-- grav: \[details((?: [^\]]*)?)\] --><details><summary>[^<]*<\/summary>\n/', '[details$1]', $markdown);
         $markdown = str_replace("\n</details><!-- grav: [/details] -->", '[/details]', $markdown);
+        $markdown = str_replace([self::ACCORDION_START, self::ACCORDION_END], '', $markdown);
         $markdown = self::detailsToShortcode($markdown);
         $markdown = self::letterBarToTopics($markdown);
         $layoutNames = implode('|', self::LAYOUT_SHORTCODES);

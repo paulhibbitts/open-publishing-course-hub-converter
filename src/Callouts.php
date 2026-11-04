@@ -186,20 +186,33 @@ class Callouts
     // ---- Docsify → Grav ----
 
     // A <details> section written in Docsify becomes the [details] shortcode: Grav shows Markdown inside HTML as
-    // plain text, all in one block, but it reads Markdown inside a shortcode. A Docsify-This accordion
-    // (<div class="accordion"> around the sections) isn't needed in Grav, so the div goes.
+    // plain text, all in one block, but it reads Markdown inside a shortcode. Sections in a Docsify-This accordion
+    // (<div class="accordion"> around them) get class="accordion", which Open Matter shows as accordion rows; the
+    // div itself isn't needed in Grav.
     // Example: <details><summary>Usability</summary> … </details> → [details summary="Usability"] … [/details]
     private static function detailsToShortcode(string $markdown): string
     {
-        $markdown = preg_replace_callback('/<details>\s*<summary>(.*?)<\/summary>/s', function ($match) {
-            $summary = str_replace('"', '&quot;', trim(strip_tags($match[1])));
-            return '[details summary="' . $summary . '"]';
+        $markdown = preg_replace_callback('/^<div class="accordion">[ \t]*\n(.*?)\n<\/div>[ \t]*$/ms', function ($match) {
+            // only a div that holds nothing but <details> sections
+            $inside = $match[1];
+            if (preg_match('/^\s*<details>/', $inside) !== 1 || preg_match('/<div/', $inside) === 1) {
+                return $match[0];
+            }
+            return self::detailsSections($inside, ' class="accordion"');
         }, $markdown);
-        $markdown = str_replace('</details>', '[/details]', $markdown);
-        // the accordion div, when all it holds is [details] sections
-        return preg_replace('/^<div class="accordion">\s*\n(\s*\[details .*?\[\/details\]\s*)\n<\/div>[ \t]*$/ms', '$1', $markdown);
+        return self::detailsSections($markdown, '');
     }
 
+    // <details><summary>…</summary> … </details> → [details summary="…"$class] … [/details]
+    private static function detailsSections(string $markdown, string $class): string
+    {
+        $markdown = preg_replace_callback('/<details>\s*<summary>(.*?)<\/summary>/s', function ($match) use ($class) {
+            // the shortcode escapes the summary itself, so a " in it is written as ' (it can't stay inside summary="…")
+            $summary = str_replace('"', "'", trim(strip_tags($match[1])));
+            return '[details summary="' . $summary . '"' . $class . ']';
+        }, $markdown);
+        return str_replace('</details>', '[/details]', $markdown);
+    }
 
     // A callout with a hidden note goes back to its exact shortcode, and a TIP that became a NOTE becomes a TIP
     // again. A callout without a note (from a site made in Docsify) becomes a shortcode when its type and heading

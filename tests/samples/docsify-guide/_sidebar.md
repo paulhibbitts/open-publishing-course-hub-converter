@@ -1,0 +1,19 @@
+- What is Open Education?
+  - [Overview](what-is-open-education/README.md)
+  - [A Spectrum of Openness](what-is-open-education/a-spectrum-of-openness.md)
+  - [Creative Commons Licenses](what-is-open-education/creative-commons-licenses.md)
+  - [Getting Started with OER](what-is-open-education/getting-started-with-oer.md)
+- Tools for Open Course Design
+  - [Overview](tools-for-open-course-design/README.md)
+  - [LMS Embedding](tools-for-open-course-design/lms-embedding.md)
+  - [Git Sync – Version-Controlled Content](tools-for-open-course-design/git-sync.md)
+  - [Docsify-This for Instant Publishing](tools-for-open-course-design/docsify-this.md)
+- Getting Started with Open Authoring
+  - [Overview](getting-started-with-open-authoring/README.md)
+  - [Inviting Contributions](getting-started-with-open-authoring/inviting-contributions.md)
+  - [Choosing a Git Platform](getting-started-with-open-authoring/choosing-a-git-platform.md)
+  - [Maintaining an Open Reader](getting-started-with-open-authoring/maintaining-an-open-reader.md)
+- Growing Your Guide
+  - [Overview](growing-your-guide/README.md)
+  - [Blogging Alongside Your Guide](growing-your-guide/blogging-alongside-your-guide.md)
+  - [When to Move to Helios Open Reader](growing-your-guide/when-to-move-to-helios-open-reader.md)

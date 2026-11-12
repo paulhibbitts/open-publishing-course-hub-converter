@@ -7,6 +7,7 @@
 //   grav-guides    – the Grav Open Publishing Space skeleton's two guides (also tested renamed to guide.md and guide-list.md)
 //   grav-extras    – a tiny guide with cases that once came back changed (Markdown-version links, banners, classes …)
 //   grav-course    – the Grav Open Course Hub skeleton's course
+//   grav-course-folder – a course in its own folder: the Grav Open Course Space skeleton's CPT363-1
 //   docsify-guide  – the Docsify-This Guide Site template
 //   docsify-course – the Docsify Open Course Starter Kit (its docs folder, without assets)
 // To update a sample after a skeleton, template or kit changes on purpose, copy its new files over the old ones.
@@ -45,6 +46,13 @@ $failed += report('Grav guides with the newer page names come back identical', s
 convert('course2docsify', "$samples/grav-course", "$work/course-docsify");
 convert('course2grav', "$work/course-docsify", "$work/course-back");
 $failed += report('Grav course comes back identical', sameFiles("$samples/grav-course", "$work/course-back"));
+
+// 2b. A course in its own folder (Open Course Space) → Docsify → Grav: every page that comes back is the same as the
+//     original (its course.md, header image, LMS pages and Read Me aren't converted, so they don't come back)
+convert('course2docsify', "$samples/grav-course-folder", "$work/folder-docsify");
+convert('course2grav', "$work/folder-docsify", "$work/folder-back");
+$folderPages = ['01.home/01._reminders/alert.md', '02.modules/module.md', '03.schedule/course-page.md', '04.resources/course-page.md', '10.syllabus/course-page.md'];
+$failed += report('Course in its own folder comes back the same', sameReturnedFiles("$samples/grav-course-folder", "$work/folder-back", $folderPages));
 
 // 3. Docsify guide → Grav → Docsify: the same text for readers (the converter's hidden notes aside)
 convert('docsify2grav', "$samples/docsify-guide", "$work/guide-grav");
@@ -110,6 +118,25 @@ function sameFiles(string $original, string $back): array
     }
     foreach (array_intersect($a, $b) as $file) {
         if (rtrim(file_get_contents("$original/$file")) !== rtrim(file_get_contents("$back/$file"))) {
+            $differences[] = "changed: $file";
+        }
+    }
+    return $differences;
+}
+
+// Every file that came back, compared with the original (a missing last line break doesn't count), and the files
+// that must come back; files that weren't converted aren't checked
+function sameReturnedFiles(string $original, string $back, array $mustReturn): array
+{
+    $differences = [];
+    $returned = filesIn($back);
+    foreach (array_diff($mustReturn, $returned) as $file) {
+        $differences[] = "missing: $file";
+    }
+    foreach ($returned as $file) {
+        if (!is_file("$original/$file")) {
+            $differences[] = "added: $file";
+        } elseif (rtrim(file_get_contents("$original/$file")) !== rtrim(file_get_contents("$back/$file"))) {
             $differences[] = "changed: $file";
         }
     }

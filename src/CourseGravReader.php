@@ -9,13 +9,21 @@ class CourseGravReader extends GravReader
 {
     public array $notes = [];
 
-    // the page types (Grav file names) converted as menu pages
-    private const MENU_PAGE_FILES = ['page.md', 'default.md'];
+    // the page types (Grav file names) converted as menu pages (course-page.md in Open Course Space and Helios
+    // Course Hub courses)
+    private const MENU_PAGE_FILES = ['page.md', 'default.md', 'course-page.md'];
 
     public function read(string $pagesDir): Site
     {
         $site = new Site();
         $this->notes = [];
+        // a course in its own folder (Open Course Space or Open MultiCourse Hub): only its pages are converted
+        foreach (['course.md', 'subsite.md'] as $courseFile) {
+            if (is_file($pagesDir . '/' . $courseFile)) {
+                $this->notes[] = 'This course is in its own folder (' . basename($pagesDir) . '); converted back to Grav, its pages '
+                    . 'go back in that folder, beside its ' . $courseFile;
+            }
+        }
         foreach ($this->subfolders($pagesDir) as $name) {
             $folder = $pagesDir . '/' . $name;
             $file = $this->markdownFile($folder);

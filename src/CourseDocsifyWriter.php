@@ -151,7 +151,8 @@ class CourseDocsifyWriter
         // the links in the home page's own text, kept apart from each part's links
         $homeLinks = [];
         foreach (explode("\n", $home->body) as $line) {
-            if (preg_match('/^\[plugin:page-inject\]\(\/[^)]*\/([^\/)]+)\)\s*$/', trim($line), $found) === 1 && isset($parts[$found[1]])) {
+            // (the part's path starts at the site, /home/_reminders, or at the page, ../home/_reminders, in Open Course Space)
+            if (preg_match('/^\[plugin:page-inject\]\((?:\.\.)?\/[^)]*\/([^\/)]+)\)\s*$/', trim($line), $found) === 1 && isset($parts[$found[1]])) {
                 $sections[] = $this->ownHomeText($ownText);
                 $ownText = [];
                 $homeLinks = array_merge($homeLinks, $this->pageLinks);

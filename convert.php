@@ -113,8 +113,8 @@ function findPagesFolder(string $dir): string
     return $pagesFolder;
 }
 
-// An Open Course Hub course's pages folder is the one with the Modules page's folder (module.md) in it, wherever it
-// sits in the zip. Returns '' when there isn't one.
+// A course's pages folder is the one with the Modules page's folder (module.md) in it, wherever it sits in the zip:
+// an Open Course Hub site's pages folder, or a course's own folder (Open Course Space). Returns '' when there isn't one.
 function findCoursePagesFolder(string $dir): string
 {
     $pagesFolder = '';
@@ -456,7 +456,7 @@ if ($repo !== null) {
 } elseif (findCoursePagesFolder($searchFolder) !== '') {
     // an Open Course Hub course: a Docsify course, laid out like the Docsify Open Course Starter Kit
     if (countFiles($searchFolder, 'module.md') > 1) {
-        fail('That zip has several courses, like an Open MultiCourse Hub site. This converter works with one course (Open Course Hub), or with guides.');
+        fail('That zip has several courses, like an Open Course Space or Open MultiCourse Hub site. This converter works with one course at a time: zip just that course\'s folder.');
     }
     $direction = 'docsify';
     $pagesFolder = findCoursePagesFolder($searchFolder);

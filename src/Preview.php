@@ -92,11 +92,12 @@ class Preview
     private function gravSamples(): array
     {
         $samples = [];
-        $guidesPage = $this->firstMatch('pages/*/reader-list.md');
+        // (the newer names guide-list.md and guide.md too)
+        $guidesPage = $this->firstMatch('pages/*/reader-list.md') ?: $this->firstMatch('pages/*/guide-list.md');
         if ($guidesPage !== '') {
             $samples['Guides page'] = $guidesPage;
         }
-        $guideHome = $this->firstMatch('pages/*/section-list.md');
+        $guideHome = $this->firstMatch('pages/*/section-list.md') ?: $this->firstMatch('pages/*/guide.md');
         if ($guideHome === '') {
             return $samples;
         }

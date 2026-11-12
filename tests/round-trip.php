@@ -4,7 +4,7 @@
 // Every check should say "passed"; anything else lists what differs.
 //
 // The samples are small copies of public starter content (smaller images – the converter only copies them):
-//   grav-guides    – the Grav Open Publishing Space skeleton's two guides
+//   grav-guides    – the Grav Open Publishing Space skeleton's two guides (also tested renamed to guide.md and guide-list.md)
 //   grav-extras    – a tiny guide with cases that once came back changed (Markdown-version links, banners, classes …)
 //   grav-course    – the Grav Open Course Hub skeleton's course
 //   docsify-guide  – the Docsify-This Guide Site template
@@ -30,6 +30,16 @@ $failed += report('Grav guides come back identical', sameFiles("$samples/grav-gu
 convert('grav2docsify', "$samples/grav-extras", "$work/extras-docsify", 'single');
 convert('docsify2grav', "$work/extras-docsify", "$work/extras-back");
 $failed += report('Grav test guide comes back identical', sameFiles("$samples/grav-extras", "$work/extras-back"));
+
+// 1c. The same guides with the newer page names (guide.md for each guide, guide-list.md for the Guides page):
+//     they come back with those names
+copyFolder("$samples/grav-guides", "$work/renamed");
+rename("$work/renamed/00.guides/reader-list.md", "$work/renamed/00.guides/guide-list.md");
+rename("$work/renamed/01.open-education-essentials/section-list.md", "$work/renamed/01.open-education-essentials/guide.md");
+rename("$work/renamed/02.sample-guide/section-list.md", "$work/renamed/02.sample-guide/guide.md");
+convert('grav2docsify', "$work/renamed", "$work/renamed-docsify");
+convert('docsify2grav', "$work/renamed-docsify", "$work/renamed-back");
+$failed += report('Grav guides with the newer page names come back identical', sameFiles("$work/renamed", "$work/renamed-back"));
 
 // 2. Grav course → Docsify → Grav: the same files as the original
 convert('course2docsify', "$samples/grav-course", "$work/course-docsify");
@@ -166,4 +176,19 @@ function removeFolder(string $folder): void
         }
     }
     rmdir($folder);
+}
+
+// A copy of a folder and everything in it
+function copyFolder(string $from, string $to): void
+{
+    mkdir($to, 0777, true);
+    $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+    foreach ($items as $item) {
+        $target = $to . '/' . substr($item->getPathname(), strlen($from) + 1);
+        if ($item->isDir()) {
+            mkdir($target, 0777, true);
+        } else {
+            copy($item->getPathname(), $target);
+        }
+    }
 }

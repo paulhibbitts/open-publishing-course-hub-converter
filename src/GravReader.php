@@ -11,10 +11,14 @@ class GravReader
         $site = new Site();
         foreach ($this->subfolders($pagesDir) as $name) {
             $folder = $pagesDir . '/' . $name;
-            if (is_file($folder . '/reader-list.md')) {
-                $site->guidesPage = $this->readPage($pagesDir, $name, 'reader-list.md', 'guides');
-            } elseif (is_file($folder . '/section-list.md')) {
-                $site->guides[] = $this->readGuide($pagesDir, $name);
+            // (the Guides page is reader-list.md or, its newer name, guide-list.md; a guide's home page is
+            // section-list.md or guide.md)
+            $guidesPageFile = $this->firstFile($folder, ['reader-list.md', 'guide-list.md']);
+            $guideFile = $this->firstFile($folder, ['section-list.md', 'guide.md']);
+            if ($guidesPageFile !== '') {
+                $site->guidesPage = $this->readPage($pagesDir, $name, $guidesPageFile, 'guides');
+            } elseif ($guideFile !== '') {
+                $site->guides[] = $this->readGuide($pagesDir, $name, $guideFile);
             }
             // anything else (the blog, standard and modular pages) isn't a guide, so it isn't converted
         }
@@ -23,9 +27,9 @@ class GravReader
 
     // A guide: its numbered folders are its sections (each with numbered page folders); its unnumbered
     // folders are menu pages such as Topics and Resources
-    private function readGuide(string $pagesDir, string $guideFolder): Page
+    private function readGuide(string $pagesDir, string $guideFolder, string $guideFile): Page
     {
-        $guide = $this->readPage($pagesDir, $guideFolder, 'section-list.md', 'guide');
+        $guide = $this->readPage($pagesDir, $guideFolder, $guideFile, 'guide');
         foreach ($this->subfolders($pagesDir . '/' . $guideFolder) as $name) {
             $folder = $guideFolder . '/' . $name;
             $file = $this->markdownFile($pagesDir . '/' . $folder);
@@ -96,6 +100,17 @@ class GravReader
         foreach (scandir($dir) as $name) {
             if (str_ends_with($name, '.md')) {
                 return $name;
+            }
+        }
+        return '';
+    }
+
+    // The first of these files that the folder has, or '' when it has none
+    private function firstFile(string $folder, array $fileNames): string
+    {
+        foreach ($fileNames as $fileName) {
+            if (is_file($folder . '/' . $fileName)) {
+                return $fileName;
             }
         }
         return '';

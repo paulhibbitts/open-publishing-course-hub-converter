@@ -44,7 +44,7 @@ class DocsifyReader
             }
             // in a single-guide site, home.md is the guide's home page
             $isHomePage = basename($note['path']) === 'home.md';
-            if ($isHomePage && str_ends_with($note['where']['file'], 'section-list.md')) {
+            if ($isHomePage && in_array(basename($note['where']['file']), ['section-list.md', 'guide.md'], true)) {
                 $this->singleGuide = Helpers::slugFromFolder(basename(dirname($note['where']['file'])));
             }
         }
@@ -111,10 +111,11 @@ class DocsifyReader
         $fileName = basename($gravFile);
         $folder = dirname($gravFile);
         $depth = count(explode('/', $folder));
-        if ($fileName === 'reader-list.md') {
+        // (the newer names guide-list.md and guide.md too)
+        if (in_array($fileName, ['reader-list.md', 'guide-list.md'], true)) {
             return 'guides';
         }
-        if ($fileName === 'section-list.md') {
+        if (in_array($fileName, ['section-list.md', 'guide.md'], true)) {
             return 'guide';
         }
         if ($depth === 2 && !Helpers::isNumbered(basename($folder))) {

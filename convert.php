@@ -94,17 +94,17 @@ function unzipPages(string $zipFile, string $into): void
     $zip->close();
 }
 
-// The pages folder is the one whose sub-folders hold the guides (a section-list.md in each), wherever it sits in
-// the zip: user/pages, pages, or the zip's top level. Returns '' when there are no guides.
+// The pages folder is the one whose sub-folders hold the guides (a section-list.md or guide.md in each), wherever
+// it sits in the zip: user/pages, pages, or the zip's top level. Returns '' when there are no guides.
 function findPagesFolder(string $dir): string
 {
     $pagesFolder = '';
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
     foreach ($files as $file) {
-        if ($file->getFilename() !== 'section-list.md') {
+        if (!in_array($file->getFilename(), ['section-list.md', 'guide.md'], true)) {
             continue;
         }
-        // section-list.md is in the guide's folder, which is in the pages folder
+        // the guide's home page is in the guide's folder, which is in the pages folder
         $candidate = dirname($file->getPath());
         if ($pagesFolder === '' || strlen($candidate) < strlen($pagesFolder)) {
             $pagesFolder = $candidate;
